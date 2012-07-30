@@ -61,9 +61,9 @@ arrayBatchOpCost x t n w = sortOps + merge + doOps + unzip
 
 arrayBatchReadCost x t n w = sortOps + doOps + unzip
   where
-  sortOps = batcherHalfSort (n+t) n * (logn + 1 + mixSize)
-  doOps = (n+t-1)*(1+logn+w+w)
-  unzip = batcherSortCount (n+t) * (logn+1+logn+w)
+  sortOps = batcherHalfSort (n+t) n * (logn+1 + mixSize)
+  doOps = (n+t-1)*(1+logt+w+w)
+  unzip = batcherSortCount (n+t) * (1+logt + 1+logt+w)
   logn = indexSize n
   logt = indexSize t
   mixSize = 1 + logn + (max logt w)
@@ -117,8 +117,10 @@ minT x n w = (tres,f tres, oldReadCost n w)
         hi = 3*n
 -}
 main =
+  putStrLn $ show $ arrayBatchReadCost 0 50 50 16 {-
   let w = 16; x = 16 in
   foldM_ (\prev n -> do
     let fields@(minpoint,_,_) = minTdescend prev n w
     putStrLn $ show n ++ "  " ++ show fields
     return minpoint) 1 [1..1000]
+    -- -}

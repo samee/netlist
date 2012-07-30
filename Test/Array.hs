@@ -105,12 +105,11 @@ testLargeRead n m = do
   inds <- getStdRandom (randomList n m)
   testReadGarbled "largeread" init inds
 
--- TODO switch to ByteStrings
 runTests = do putStrLn $ show (testWriteIntpret smallList writeCmd)
                         ++ "   Test.Array.testWriteIntpret"
               putStrLn $ show (testReadIntpret smallList readAddrs)
                         ++ "   Test.Array.testReadIntpret"
               testWriteGarbled "smallwrite" smallList writeCmd
               testReadGarbled "smallread" smallList readAddrs
-              testLargeWrite 100 412
-              testLargeRead 100 412
+              testLargeWrite 50 50 
+              testLargeRead 50 50 

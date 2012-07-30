@@ -99,7 +99,7 @@ readArray arr addrs = mapM resizeAddr addrs >>=
     , rsConstAddr = return . constArg addrw
     , rsConstSerial = return . constArg serw
     , rsArrayIndex = valueBeforeRead
-    , rsSift = swapOnGreaterByBits
+    , rsSift = swapOnGreaterByBits -- TODO don't compare value wires
     , rsFromMaybe = return . castFromJust
     , rsToMaybe = return . gblMaybe . Just
     , rsNoPair = gblMaybe Nothing
@@ -110,8 +110,13 @@ readArray arr addrs = mapM resizeAddr addrs >>=
     tp <- mixType mix
     mux tp eltRes serRes
 
-swapOnGreaterByBits a b = do c <- greaterByBits a b
-                             condSwap c a b
+swapOnGreaterByBits a b = do
+  (a@(GblMaybe at adt), b@(GblMaybe bt bdt)) <- equalSize a b
+  c <- case (adt,bdt) of
+            (Nothing,Nothing) -> greaterByBits at bt
+            (Just (aSer,_),Just (bSer,_)) -> greaterByBits (at,aSer) (bt,bSer)
+            _ -> error "buggy equalSize for GblMaybe"
+  condSwap c a b
 
 mixFromEither :: Garbled g => g -> Int -> Either GblInt g 
               -> GcilMonad (GblBit,GblInt)
@@ -130,8 +135,8 @@ mixType = return.fst
 
 -- Fragile code: first compares by address, then by type if that fails
 -- if mix is value that comes first, if serial, it comes later
-valueBeforeRead a@(addrA,mixA) b@(addrB,mixB) = do
-  c <- greaterByBits a b
+valueBeforeRead a@(addrA,(at,_)) b@(addrB,(bt,_)) = do
+  c <- greaterByBits (addrA,at) (addrB,bt)
   condSwap c a b
 
 instance Garbled g => Garbled (GblArray g) where

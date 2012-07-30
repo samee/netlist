@@ -18,7 +18,7 @@ type GcilMonad = StateT GcilState IO
 putLine s = do h <- gets $ snd; lift $ hPutStrLn h s
 --putLine s = tell $ B.pack (s++"\n")
 
-nxtIndex = state (\(a,h) -> (a,(a+1,h))) 
+getNxtIndex = state (\(a,h) -> (a,(a+1,h))) 
 varName i = "t"++show i
 
 -- A set of garbled bits. Right now, I am not keeping track of party
@@ -119,7 +119,7 @@ caseGblMaybe f (GblMaybe p (Just x))  = do
   jc <- f $ Just x
   mux p nc jc
 
-newVariable w lineMaker = do  i <- nxtIndex
+newVariable w lineMaker = do  i <- getNxtIndex
                               putLine $ lineMaker $ varName i
                               return $ GblInt (varName i) w
 
