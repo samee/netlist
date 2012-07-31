@@ -1,6 +1,7 @@
 module Circuit.Gcil.Array where
 
 import Control.Monad
+import Control.Monad.State (modify)
 import qualified Data.Array as A
 import Debug.Trace
 import Prelude as P -- Me and my laziness
@@ -161,3 +162,23 @@ instance Garbled g => Garbled (GblArray g) where
                     return (listArray w as, listArray w bs)
                     
 
+
+------------------------------------ Bad versions ----------------------------
+
+longMux :: Garbled g => GblInt -> [g] -> GcilMonad g
+longMux index elts = do bits <- bitList index
+                        muxAux bits elts
+  where
+  bitList index = unconcat (replicate (gblWidth index) 1) index >>= 
+                  mapM (return.intToBit) . reverse
+  muxAux _ [] = undefined
+  muxAux _ [x] = return x
+  muxAux [] (x:_) = return x
+  muxAux (i:is) xs = do let (ex,ox) = splitOddEven xs
+                        evr <- muxAux is ex
+                        odr <- muxAux is ox
+                        mux i evr odr
+
+badReadArray :: Garbled g => GblArray g -> [GblInt] -> GcilMonad [g]
+badReadArray arr inds = forM inds (\ind -> longMux ind elts)
+  where elts = elems arr

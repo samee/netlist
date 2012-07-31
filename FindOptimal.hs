@@ -2,6 +2,7 @@ module Main where
 import Control.Monad
 import Util
 
+{-
 bitonicSwapCount x = x `div` 2
 bitonicMergeCount x = if x <= 1 then 0
                       else bitonicSwapCount x + bitonicMergeCount h
@@ -12,7 +13,7 @@ bitonicSortCount x =  if x<=1 then 0
                       else bitonicSortCount h + bitonicSortCount (x-h)
                             + bitonicMergeCount x
   where h = x `div` 2
-
+-}
 batcherSwapCount 0 = 0
 batcherSwapCount x = x-1
 
@@ -35,7 +36,7 @@ batcherHalfSort h x | x <= 1 = 0
                     | h <= 0 = batcherSortCount x
                     | otherwise = batcherHalfSort h mid
                                 + batcherHalfSort (h-mid) (x-mid)
-                                + batcherMergeCount mid (h-mid)
+                                + batcherMergeCount mid (x-mid)
                     where mid = div x 2
 
 {-
@@ -49,6 +50,7 @@ indexSize x = 1 + indexSize ((x+1)`div`2)
 -- n : array size
 -- w : array element width in bits
 
+{-
 arrayBatchOpCost x t n w = sortOps + merge + doOps + unzip
   where
   sortOps = bitonicSortCount t * taggedPair
@@ -58,10 +60,11 @@ arrayBatchOpCost x t n w = sortOps + merge + doOps + unzip
   logt = indexSize t
   logn = indexSize n
   taggedPair = 1 + logt + logn
+  -}
 
 arrayBatchReadCost x t n w = sortOps + doOps + unzip
   where
-  sortOps = batcherHalfSort (n+t) n * (logn+1 + mixSize)
+  sortOps = batcherHalfSort n (n+t) * (logn+1 + mixSize)
   doOps = (n+t-1)*(1+logt+w+w)
   unzip = batcherSortCount (n+t) * (1+logt + 1+logt+w)
   logn = indexSize n
@@ -105,22 +108,36 @@ minArgR lo hi f | lo < 1 = minArgR 1 hi f
                 | otherwise = minPoint
                 where minPoint = minarg [lo..hi] f
 
-minTdescend init n w = (tres, f tres, oldWriteCost n w)
+minTdescend init n w = (tres, f tres, oldReadCost n w)
   where tres = minArgR (init-searchBreadth) (init+searchBreadth) f
-        f t = fromIntegral (arrayBatchWriteCost 0 t n w)/fromIntegral t
-{-
+        f t = fromIntegral (arrayBatchReadCost 0 t n w)/fromIntegral t
+
 minT :: Fractional a => Int -> Int -> Int -> (Int, a, Int)
 minT x n w = (tres,f tres, oldReadCost n w)
   where tres = minarg [lo..hi] f
         f t = fromIntegral (arrayBatchReadCost x t n w)/fromIntegral t
-        lo = n
-        hi = 3*n
--}
-main =
-  putStrLn $ show $ arrayBatchReadCost 0 50 50 16 {-
-  let w = 16; x = 16 in
+        lo = max 0 (n-5)
+        hi = (7*n) `div` 2
+
+listCostVsBatchSize :: Int -> Int -> Int -> IO ()
+listCostVsBatchSize tmax n w = do
+  forM_ [1..tmax] $ \t ->
+    putStrLn $ show t ++ " " ++ show (fromIntegral(arrayBatchReadCost 0 t n w)
+                                      /fromIntegral t)
+    
+listNaiveBatchCost :: Int -> Int -> IO ()
+listNaiveBatchCost nmax w = do
+  forM_ [1..nmax] $ \n ->
+    putStrLn $ show n ++ " " ++ show (fromIntegral(arrayBatchReadCost 0 n n w)
+                                      /fromIntegral n)
+
+listBestBatch = do
+  let w = 16
   foldM_ (\prev n -> do
-    let fields@(minpoint,_,_) = minTdescend prev n w
+--    let fields@(minpoint,_,_) = minTdescend prev n w
+    let fields@(minpoint,_,_) = minT 0 n w
     putStrLn $ show n ++ "  " ++ show fields
     return minpoint) 1 [1..1000]
     -- -}
+
+main = listNaiveBatchCost 1000 16

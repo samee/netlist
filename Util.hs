@@ -30,5 +30,9 @@ divideList n l  | n == 0    = []
   sz  = len `div` n
   (tk,dr) = splitAt sz l
 
+splitOddEven [] = ([],[])
+splitOddEven [x] = ([x],[])
+splitOddEven (x:y:l) = (x:xs,y:ys) where (xs,ys) = splitOddEven l
+
 traceme x = traceShow x x
 

@@ -3,6 +3,8 @@ import Control.Monad
 import Data.Bits
 import Debug.Trace
 
+import Util
+
 type CmpSwap m a = a -> a -> m (a,a)
 
 sort :: Monad m => CmpSwap m a -> [a] -> m [a]
@@ -34,10 +36,6 @@ batcherSwap _ [x] = return [x]
 batcherSwap cmpSwap (x:y:l) = do
   (x,y) <- cmpSwap x y
   liftM (x:) $ batcherSwap cmpSwap (y:l)
-
-splitOddEven [] = ([],[])
-splitOddEven [x] = ([x],[])
-splitOddEven (x:y:l) = (x:xs,y:ys) where (xs,ys) = splitOddEven l
 
 unsplitOddEven [] y = y
 unsplitOddEven x [] = x

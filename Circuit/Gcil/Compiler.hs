@@ -9,16 +9,28 @@ import System.IO
 import Circuit.Array
 import Util
 
-type GcilState = (Int,Handle)
-initState handle = (1,handle)
+data GcilState = GcilState { nxtIndex :: Int
+                           , compileTarget :: Handle
+                           , totalAndGates :: Int
+                           }
+initState handle = GcilState  { nxtIndex = 1
+                              , compileTarget = handle
+                              , totalAndGates = 0
+                              }
+
+andsUsed i = modify (\s -> s { totalAndGates = totalAndGates s + i })
+ignoreAndsUsed x = do c <- gets $ totalAndGates
+                      r <- x
+                      modify (\s -> s { totalAndGates = c })
+                      return r
 
 -- Commands in this module are mostly in the GcilMonad. Meaning that
 -- the compiler internal state is just an Int and it writes to a String
 type GcilMonad = StateT GcilState IO
-putLine s = do h <- gets $ snd; lift $ hPutStrLn h s
+putLine s = do h <- gets $ compileTarget; lift $ hPutStrLn h s
 --putLine s = tell $ B.pack (s++"\n")
 
-getNxtIndex = state (\(a,h) -> (a,(a+1,h))) 
+getNxtIndex = state (\s@GcilState { nxtIndex = a } -> (a,s {nxtIndex=a+1}))
 varName i = "t"++show i
 
 -- A set of garbled bits. Right now, I am not keeping track of party
@@ -153,7 +165,7 @@ rigidWidth op a b | aw /= bw  = undefined
                   where aw = gblWidth a; bw = gblWidth b
 
 not a   = calculate  "not" (gblWidth a) [gblName a]
-and a b = rigidWidth "and" a b
+and a b = do andsUsed (gblWidth a); rigidWidth "and" a b
 xor a b = rigidWidth "xor" a b
 select st en a = calculate "select" (en-st) [gblName a, show st, show en]
 trunc sz a = calculate "trunc" sz [gblName a, show sz] -- select 0 sz a
@@ -172,21 +184,25 @@ unconcat ls a | lensum > gblWidth a = undefined "unconcat lengths out of range"
                    return $ init res
 
 
+addSubCost a b = andsUsed $ max (gblWidth a) (gblWidth b)
+
 -- addU may overflow, addWithCarryU won't but produces results a bit wider
 addU a b = do r <- addWithCarryU a b; trunc (bitWidth a) r
-addWithCarryU a b = fixWidthU "add" (+1) a b
+addWithCarryU a b = do addSubCost a b; fixWidthU "add" (+1) a b
 
 ----------------------- Compares and swaps --------------------------------
 
 castSingleBit a = unbitify bitZero a
-greaterThanU a b = fixWidthU "gtu" (const 1) a b >>= castSingleBit
+greaterThanU a b = do addSubCost a b 
+                      fixWidthU "gtu" (const 1) a b >>= castSingleBit
 
 greaterByBits :: Garbled g => g -> g -> GcilMonad GblBit
 greaterByBits a b = do  az <- bitify a
                         bz <- bitify b
                         greaterThanU az bz
 
-equalU a b = fixWidthU "equ" (const 1) a b >>= castSingleBit
+equalU a b = do andsUsed $ max (gblWidth a) (gblWidth b) - 1
+                fixWidthU "equ" (const 1) a b >>= castSingleBit
 
 equalByBits :: Garbled g => g -> g -> GcilMonad GblBit
 equalByBits a b = do  az <- bitify a

@@ -54,7 +54,8 @@ testWriteGarbled testName arr delta = do
 
 testReadGarbled :: String -> [Int] -> [Int] -> IO ()
 testReadGarbled testName arr addr = do
-  (arrEltNames,addrNames) <- withFile ("gcilouts/"++testName++".cir") WriteMode
+  (arrEltNames,addrNames,readCost) 
+    <- withFile ("gcilouts/"++testName++".cir") WriteMode
                               (evalStateT ckt . initState)
   writeFile ("gcilouts/"++testName++"-server.in") $ initArray arrEltNames arr
   writeFile ("gcilouts/"++testName++"-client.in") $ initArray addrNames addr
@@ -71,10 +72,11 @@ testReadGarbled testName arr addr = do
     addrPh <- forM [1..addrN] (\_ -> newInput (indexSize n) 1)
     res <- GA.readArray arrPh addrPh
     manPh <- forM manual (return . constArg intWidth)
+    readCost <- gets $ totalAndGates
     match <- GA.ifEqualElse (GA.listArray intWidth res)
                             (GA.listArray intWidth manPh) bitOne bitZero
     newOutput $ bitToInt match
-    return (map gblName $ GA.elems arrPh, map gblName addrPh)
+    return (map gblName $ GA.elems arrPh, map gblName addrPh, readCost)
 
 testWriteIntpret arr delta = me == manual where
   me = runIdentity $ IA.writeArray arr delta
@@ -111,5 +113,6 @@ runTests = do putStrLn $ show (testWriteIntpret smallList writeCmd)
                         ++ "   Test.Array.testReadIntpret"
               testWriteGarbled "smallwrite" smallList writeCmd
               testReadGarbled "smallread" smallList readAddrs
-              testLargeWrite 50 50 
-              testLargeRead 50 50 
+              -- TODO move out of Test.*
+              testLargeWrite 350 350
+              testLargeRead 500 500
