@@ -49,7 +49,7 @@ applyOpsBase opSpecs arr ops = do
 --   provided. However, there are no guarantees about the order of operations
 --   among different elements. I mean, that's why it's called a batch operation
 applyOps opSpecs arr ops = do
-  let opsBlockized = [ops] --divideList (max 1 $ length ops `div` length arr) ops
+  let opsBlockized = [ops]--divideList (max 1 $ length ops `div` length arr) ops
   ((foldend,arr),resBlockized) <- mapAccumM (\(acc,arr) block -> do
     (arr,result,acc) <- applyOpsBase opSpecs arr block
     return ((acc,arr),result)) (foldInit opSpecs,arr) opsBlockized
@@ -57,7 +57,7 @@ applyOps opSpecs arr ops = do
 
 -- Well, not exactly half --- you get to specify a range [a,b) which is assumed
 -- to be already sorted. Note that the right endpoint of the range is exclusive
-sortHalf cmpSwap a b l | a>b            = undefined
+sortHalf cmpSwap a b l | (a>b)          = undefined
                        | len<=1         = return l
                        | a<=0 && b>=len = return l
                        | b<=0 || a>=len = Sort.sort cmpSwap l

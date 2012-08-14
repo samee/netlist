@@ -1,9 +1,17 @@
 #!/bin/bash
 
-if [[ $1 == "-s" ]] ; then
-  ghc --make -outputdirbin -O2 FindOptimal
-elif [[ $1 == "-p" ]] ; then
-  ghc --make -outputdirbin -prof -auto-all -hisufp_hi -osufp_o SorterTests
-else
-  ghc --make -outputdirbin -O2 SorterTests
+CFLAGS=-O2
+if [[ $1 == "-p" ]] ; then
+  CFLAGS="-prof -auto-all -hisufp_hi -osufp_o -O2"
+  shift
 fi
+
+if [[ $1 == "-s" ]] ; then
+  TARGET=FindOptimal
+elif [[ $1 == "-t" ]] ; then
+  TARGET=SorterTests
+else
+  TARGET=TestCircuits
+fi
+
+ghc --make -outputdirbin $CFLAGS $TARGET

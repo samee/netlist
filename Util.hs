@@ -1,6 +1,7 @@
 module Util where
 
 import Control.Monad
+import Data.Bits
 import Debug.Trace
 
 mapAccumM :: Monad m => (c -> a -> m (c,b)) -> c -> [a] -> m (c,[b])
@@ -20,6 +21,15 @@ indexSize x = 1 + indexSize ((x+1) `div` 2)
 
 valueSize 0 = 1
 valueSize x = indexSize (x+1)
+
+-- Note: 0 return True
+isPowerOf2 x = x .&. (x-1) == 0
+
+powerOf2Le x | isPowerOf2 x = x
+             | otherwise = powerOf2Le (x .&. (x-1))
+
+powerOf2Lt x | isPowerOf2 x = x `div` 2
+             | otherwise = powerOf2Le x
 
 -- Divides l into n parts as evenly as it can
 divideList n l  | n == 0    = []

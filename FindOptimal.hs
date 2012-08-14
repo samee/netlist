@@ -1,5 +1,9 @@
 module Main where
 import Control.Monad
+import Control.Monad.State
+import System.Random
+
+import Circuit.Sorter
 import Util
 
 {-
@@ -14,9 +18,28 @@ bitonicSortCount x =  if x<=1 then 0
                             + bitonicMergeCount x
   where h = x `div` 2
 -}
+
+sortCmpCount sorter x = execState (sorter swapTrack dummyList) 0 where
+  dummyList = replicate x ()
+  swapTrack () () = do modify (+1); return ((),())
+
+shellSortCount rgen x = sortCmpCount (shellSort rgen) x
+shellHalfSort rgen h x | x <= 1 = 0
+                       | h >= x = 0
+                       | h <= 0 = shellSortCount rgen x
+                       {-
+                       | otherwise = shellHalfSort rgen h mid
+                                   + shellHalfSort rgen (h-mid) (x-mid)
+                                   + batcherMergeCount mid (x-mid)
+                      where mid = x `div` 2
+                      -}
+                       | otherwise  = shellSortCount rgen (x-h)
+                                    + batcherNeqMerge h (x-h)
+
 batcherSwapCount 0 = 0
 batcherSwapCount x = x-1
 
+-- TODO check if this works on completely assymetric lengths
 batcherMergeCount x y | y == 0 || x ==0 = 0
                       | x == 1 && y == 1 = 1
                       | otherwise 
@@ -38,6 +61,13 @@ batcherHalfSort h x | x <= 1 = 0
                                 + batcherHalfSort (h-mid) (x-mid)
                                 + batcherMergeCount mid (x-mid)
                     where mid = div x 2
+
+-- Merges two sorted lists of unequal size
+batcherNeqMerge a b | a < b = batcherNeqMerge b a
+                    | a <= 0 || b <= 0 = 0
+                    | otherwise = batcherNeqMerge (a-mid) b
+                                + batcherMergeCount mid (a+b-mid)
+  where mid = (a+b) `div` 2
 
 {-
 indexSize 0 = 0
@@ -64,9 +94,9 @@ arrayBatchOpCost x t n w = sortOps + merge + doOps + unzip
 
 arrayBatchReadCost x t n w = sortOps + doOps + unzip
   where
-  sortOps = batcherHalfSort n (n+t) * (logn+1 + mixSize)
+  sortOps = activeHalfSort n (n+t) * (logn+1 + mixSize)
   doOps = (n+t-1)*(1+logt+w+w)
-  unzip = batcherSortCount (n+t) * (1+logt + 1+logt+w)
+  unzip = activeSorter (n+t) * (1+logt + 1+logt+w)
   logn = indexSize n
   logt = indexSize t
   mixSize = 1 + logn + (max logt w)
@@ -75,9 +105,9 @@ oldReadCost n w = (n-1)*w
 
 arrayBatchWriteCost x t n w = sortOps + doOps + unzip
   where
-  sortOps = batcherHalfSort (n+t) n * (2*logn+2*logt+w)
+  sortOps = activeHalfSort (n+t) n * (2*logn+2*logt+w)
   doOps = (n+t-1)*(logn + 1+logn+w + w)
-  unzip = batcherSortCount (n+t) * (logn+1+logn+w)
+  unzip = activeSorter (n+t) * (logn+1+logn+w)
   logn = indexSize n
   logt = indexSize t
 
@@ -130,6 +160,7 @@ listNaiveBatchCost nmax w = do
   forM_ [1..nmax] $ \n ->
     putStrLn $ show n ++ " " ++ show (fromIntegral(arrayBatchReadCost 0 n n w)
                                       /fromIntegral n)
+                      ++ " " ++ show (oldReadCost n w)
 
 listBestBatch = do
   let w = 16
@@ -140,4 +171,8 @@ listBestBatch = do
     return minpoint) 1 [1..1000]
     -- -}
 
+activeHalfSort = shellHalfSort (fst $ head $ reads "activeHalfSort" :: StdGen)
+activeSorter = shellSortCount (fst $ head $ reads "activeSorter" :: StdGen)
+--activeHalfSort = batcherHalfSort
+--activeSorter = batcherSortCount
 main = listNaiveBatchCost 1000 16

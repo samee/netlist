@@ -59,6 +59,7 @@ testReadGarbled testName arr addr = do
                               (evalStateT ckt . initState)
   writeFile ("gcilouts/"++testName++"-server.in") $ initArray arrEltNames arr
   writeFile ("gcilouts/"++testName++"-client.in") $ initArray addrNames addr
+  putStrLn $ show readCost
   where
   n = length arr
   manual = map (arr!!) addr
