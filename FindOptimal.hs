@@ -23,7 +23,10 @@ sortCmpCount sorter x = execState (sorter swapTrack dummyList) 0 where
   dummyList = replicate x ()
   swapTrack () () = do modify (+1); return ((),())
 
+-- As of writing, this simply returns, for powers of 2,
+-- 5*n*(logn-1)-2.5*n+8
 shellSortCount rgen x = sortCmpCount (shellSort rgen) x
+
 shellHalfSort rgen h x | x <= 1 = 0
                        | h >= x = 0
                        | h <= 0 = shellSortCount rgen x
@@ -47,6 +50,8 @@ batcherMergeCount x y | y == 0 || x ==0 = 0
   + batcherMergeCount (div x 2) (div y 2)
   + batcherSwapCount (x+y)
 
+-- As of writing, for powers of 2, this simply returns
+-- 0.5*n*logn*(logn-1)+n-1
 batcherSortCount x  | x<=1 = 0
                     | otherwise = batcherSortCount h
                                 + batcherSortCount (x-h)
@@ -175,4 +180,7 @@ activeHalfSort = shellHalfSort (fst $ head $ reads "activeHalfSort" :: StdGen)
 activeSorter = shellSortCount (fst $ head $ reads "activeSorter" :: StdGen)
 --activeHalfSort = batcherHalfSort
 --activeSorter = batcherSortCount
-main = listNaiveBatchCost 1000 16
+--main = listNaiveBatchCost 1000 16
+
+main = do putStrLn $ show $ batcherSortCount 256
+          putStrLn $ show $ activeSorter 256
