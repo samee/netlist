@@ -72,7 +72,7 @@ shellSortCompareRegions rgen cmp a b = do
   where
   an = length a
   bn = length b
-  p = randomPermute rgen [0..an-1]
+  p = fst $ randomPermute [0..an-1] rgen
 
 
 splitEach x [] = []

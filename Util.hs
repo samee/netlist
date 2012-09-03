@@ -3,7 +3,8 @@ module Util where
 import Control.Monad
 import Control.Monad.ST
 import Data.Array as A
-import Data.Array.ST
+import Data.Array.ST hiding (unsafeFreeze)
+import Data.Array.Unsafe
 import Data.Bits
 import Data.STRef
 import Debug.Trace
@@ -54,24 +55,31 @@ inversePermute l = A.elems inv where
   inv = A.array (0,n-1) $ map (\i -> (arr ! i,i)) [0..n-1]
   arr = listArray (0,n-1) l
 
-randomPermute :: RandomGen g => g -> [Int] -> [Int]
-randomPermute rgen x = runST $ do
-    g   <- newSTRef rgen
+randomPermute :: RandomGen g => [a] -> g -> ([a],g)
+randomPermute x rgen = (body,rgen2) where
+  (rgen1,rgen2) = split rgen
+  body = elems $ runST $ do
+    g   <- newSTRef rgen1
     arr <- newArray x
     let newInd st = do
           (i,rgen') <- liftM (randomR (st,n-1)) (readSTRef g)
           writeSTRef g rgen'
           return i
-    forM [0..n-1] $ \i -> do
+    forM_ [0..n-1] $ \i -> do
       j <- newInd i
       p <- readArray arr i
       q <- readArray arr j
       writeArray arr j p
-      return q
-  where n = length x
-        newArray :: [Int] -> ST s (STUArray s Int Int)
-        newArray x = newListArray (0,length x-1) x
+      writeArray arr i q
+    unsafeFreeze arr
+  n = length x
+  newArray :: [a] -> ST s (STArray s Int a)
+  newArray x = newListArray (0,length x-1) x
 
+randSplit 0 _ = []
+randSplit 1 rgen = [rgen]
+randSplit n rgen = rgen1 : randSplit (n-1) rgen2 
+  where (rgen1,rgen2) = split rgen
 
 traceme x = traceShow x x
 

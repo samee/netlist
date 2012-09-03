@@ -21,7 +21,7 @@ stableMarriage orderM orderF
     , smsInversePermute = return.inversePermute
     , smsReadBatch = \l inds -> mapM (return.(l!!)) inds
     , smsIncr = return.(+1)
-    , smsMux = \c a b -> return $ if c then a else b
+    , smsMux = \c a b -> return $ if c then b else a
     , smsLessThan = \a b -> return (a<b)
     , smsUnionWith = myunion
     , smsAbsent = absentMask
@@ -41,4 +41,4 @@ stableMarriage orderM orderF
       | k1 /= k2 = unionSorted ((k2,v2):as) >>= return.((k1,v1):)
 
 absentMask n xs = return $ A.elems $ A.listArray (0,n-1) (replicate n True) // 
-                  map (\i -> (i,False)) xs
+                  [(i,False) | i <- xs, i<n ]
