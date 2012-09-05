@@ -131,6 +131,9 @@ caseGblMaybe f (GblMaybe p (Just x))  = do
   jc <- f $ Just x
   mux p nc jc
 
+gblIsNothing (GblMaybe _ Nothing) = return bitOne
+gblIsNothing (GblMaybe p _) = not p >>= return
+
 newVariable w lineMaker = do  i <- getNxtIndex
                               putLine $ lineMaker $ varName i
                               return $ GblInt (varName i) w
@@ -163,6 +166,42 @@ fixWidthU op resSize  a b  | aw < bw = do a' <- zextend bw a; f bw a' b
 rigidWidth op a b | aw /= bw  = undefined
                   | otherwise = calculate op aw [gblName a,gblName b]
                   where aw = gblWidth a; bw = gblWidth b
+
+andList [] = return bitOne
+andList [x] = return x
+andList (x:xs) = andList xs >>= and x
+
+lsb i = select 0 1 i >>= intToBit
+
+splitLsb i = do b <- lsb i
+                r <- select 1 (gblWidth i) i
+                return (b,r)
+
+-- Returns weird elements if i value >= len
+-- muxListOffset 0 i l
+muxList i l | len == 1 || w == 0 = return $ head l
+            | len == 0 = undefined
+            | otherwise = do  (ih,ir) <- splitLsb i
+                              mo <- muxList ir lo
+                              me <- muxList ir le
+                              mux ih me mo
+  where
+  len = length l
+  w   = gblWidth i
+  (le,lo) = splitOddEven l
+
+-- Essentially the same as muxList (i-lo) l, but avoids the subtraction
+muxListOffset lo i l | len == 1 || w == 0 = return $ head l
+                     | len == 0 = undefined
+                     | otherwise = recur
+  where 
+  recur = do  (ih,ir) <- splitLsb i
+              me <- muxListOffset ((lo+1)`div`2) ir le
+              mo <- muxListOffset (lo`div`2) ir lo
+              mux ih me mo
+  len = length l
+  w = gblWidth i
+  (le,lo) = (if even lo then id else swap) (splitOddEven l)
 
 not a   = calculate  "not" (gblWidth a) [gblName a]
 and a b = do andsUsed (gblWidth a); rigidWidth "and" a b
