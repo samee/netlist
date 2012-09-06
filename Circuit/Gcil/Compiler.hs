@@ -9,6 +9,7 @@ import System.IO
 import Circuit.Array
 import Util
 
+-- When the errors pour, ands need to become bitAnd, and new ands need to be
 data GcilState = GcilState { nxtIndex :: Int
                            , compileTarget :: Handle
                            , totalAndGates :: Int
@@ -117,6 +118,10 @@ instance Garbled a => Garbled (GblMaybe a) where
                             return (GblMaybe p1 (Just x1),
                                     GblMaybe p2 (Just x2))
 
+-- Conditionally converts to Nothing
+condNothing c (GblMaybe _ Nothing) = return $ gblMaybe Nothing
+condNothing c (GblMaybe p x) = do  c' <- not c >>= and p
+                                      return $ GblMaybe c' x
 gblMaybe Nothing   = GblMaybe bitZero Nothing
 gblMaybe (Just x)  = GblMaybe bitOne (Just x)
 castFromJust (GblMaybe _ Nothing) = error "Casting GblMaybe known to be Nothing"
@@ -157,6 +162,12 @@ hCompile handle inputWidths inputParties action = runStateT (do
 zextend w a = calculate "zextend" w [gblName a,show w]
 sextend w a = calculate "sextend" w [gblName a,show w]
 
+fixWidthS op resSize  a b  | aw < bw = do a' <- sextend bw a; f bw a' b
+                           | aw > bw = do b' <- sextend aw b; f aw a b'
+                           | otherwise = f aw a b
+  where  aw = gblWidth a; bw = gblWidth b
+         f w a b = calculate op (resSize w) [gblName a,gblName b]
+
 fixWidthU op resSize  a b  | aw < bw = do a' <- zextend bw a; f bw a' b
                            | aw > bw = do b' <- zextend aw b; f aw a b'
                            | otherwise = f aw a b
@@ -189,6 +200,16 @@ muxList i l | len == 1 || w == 0 = return $ head l
   len = length l
   w   = gblWidth i
   (le,lo) = splitOddEven l
+
+decoder x = decoderWithEnable bitOne x
+
+decoderWithEnable en x = aux en x [] where
+  aux en [] acc = return (en:acc)
+  aux en (x:xs) acc = do
+    b <- and x en
+    a <- xor b en
+    acc <- aux b xs acc
+    aux a xs acc
 
 -- Essentially the same as muxList (i-lo) l, but avoids the subtraction
 muxListOffset lo i l | len == 1 || w == 0 = return $ head l
@@ -226,7 +247,13 @@ unconcat ls a | lensum > gblWidth a = undefined "unconcat lengths out of range"
 addSubCost a b = andsUsed $ max (gblWidth a) (gblWidth b)
 
 -- addU may overflow, addWithCarryU won't but produces results a bit wider
-addU a b = do r <- addWithCarryU a b; trunc (bitWidth a) r
+addU a b = do r <- addWithCarryU a b
+              trunc (gblWidth r - 1) r
+
+addS a b = do addSubCost a b
+              r <- fixWidthS "add" (+1) a b
+              trunc (gblWidth r - 1) r
+
 addWithCarryU a b = do addSubCost a b; fixWidthU "add" (+1) a b
 
 ----------------------- Compares and swaps --------------------------------
