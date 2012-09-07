@@ -59,7 +59,7 @@ testReadGarbled testName arr addr = do
                               (evalStateT ckt . initState)
   writeFile ("gcilouts/"++testName++"-server.in") $ initArray arrEltNames arr
   writeFile ("gcilouts/"++testName++"-client.in") $ initArray addrNames addr
-  putStrLn $ show readCost
+  putStrLn $ show readCost ++ " non-free gates"
   where
   n = length arr
   manual = map (arr!!) addr
@@ -114,6 +114,5 @@ runTests = do putStrLn $ show (testWriteIntpret smallList writeCmd)
                         ++ "   Test.Array.testReadIntpret"
               testWriteGarbled "smallwrite" smallList writeCmd
               testReadGarbled "smallread" smallList readAddrs
-              -- TODO move out of Test.*
               testLargeWrite 350 350
               testLargeRead 500 500

@@ -2,14 +2,14 @@ module Circuit.Gcil.Compiler where
 
 import Control.Monad.State.Strict
 import Control.Monad.Writer.Lazy
-import qualified Data.ByteString.Lazy.Char8 as B
+--import qualified Data.ByteString.Lazy.Char8 as B
+import Data.Tuple
 import Debug.Trace
 import System.IO
 
 import Circuit.Array
 import Util
 
--- When the errors pour, ands need to become bitAnd, and new ands need to be
 data GcilState = GcilState { nxtIndex :: Int
                            , compileTarget :: Handle
                            , totalAndGates :: Int
@@ -35,20 +35,23 @@ getNxtIndex = state (\s@GcilState { nxtIndex = a } -> (a,s {nxtIndex=a+1}))
 varName i = "t"++show i
 
 -- A set of garbled bits. Right now, I am not keeping track of party
-newtype GblBit = GblBit { bitName :: String }
+newtype GblBool = GblBool { bitName :: String }
 data GblInt = GblInt { gblName  :: String
                      , gblWidth :: Int
                      }
 
-intToBit g | gblWidth g /= 1 = traceShow (gblWidth g) $ undefined
-           | otherwise       = GblBit $ gblName g
+intToBit g | gblWidth g /= 1 = error $ (show $ gblWidth g)++"-bit int not bool"
+           | otherwise       = GblBool $ gblName g
 bitToInt b = GblInt { gblName = bitName b, gblWidth = 1 }
 bitRepeat 0 _ = return $ constArg 0 0
 bitRepeat 1 b = return $ bitToInt b
 bitRepeat n b = sextend n $ bitToInt b
 bitZero = intToBit $ constArg 1 0
 bitOne  = intToBit $ constArg 1 1
-bitNot x = gcnot (bitToInt x) >>= return.intToBit
+not x = bitwiseNot (bitToInt x) >>= return.intToBit
+and x y = bitwiseAnd (bitToInt x) (bitToInt y) >>= return.intToBit
+or  x y = and x y >>= xorList . (:[x,y])
+xor x y = bitwiseXor (bitToInt x) (bitToInt y) >>= return.intToBit
 
 class Garbled g where
   bitWidth :: g -> Int
@@ -56,7 +59,7 @@ class Garbled g where
   unbitify :: g -> GblInt -> GcilMonad g
   equalSize:: g -> g -> GcilMonad (g,g)
 
-instance Garbled GblBit  where
+instance Garbled GblBool  where
   bitWidth _ = 1
   bitify = return.bitToInt
   unbitify _ i = return $ intToBit i
@@ -99,7 +102,7 @@ instance (Garbled a, Garbled b, Garbled c) => Garbled (a,b,c) where
 
 -- Here Nothing means known to be Nothing, but Just means could be either
 -- greaterByBits will compare Nothing to be smaller UNTESTED
-data GblMaybe a = GblMaybe GblBit (Maybe a)
+data GblMaybe a = GblMaybe GblBool (Maybe a)
 
 instance Garbled a => Garbled (GblMaybe a) where
   bitWidth (GblMaybe p Nothing)  = bitWidth p
@@ -118,14 +121,19 @@ instance Garbled a => Garbled (GblMaybe a) where
                             return (GblMaybe p1 (Just x1),
                                     GblMaybe p2 (Just x2))
 
--- Conditionally converts to Nothing
+-- Conditionally converts to Nothing using a single and gate
+-- condNothing True x = gblMaybe Nothing
+-- condNothing False x = x
 condNothing c (GblMaybe _ Nothing) = return $ gblMaybe Nothing
-condNothing c (GblMaybe p x) = do  c' <- not c >>= and p
-                                      return $ GblMaybe c' x
+condNothing c (GblMaybe p x) = do  c' <- gcnot c >>= gcand p
+                                   return $ GblMaybe c' x
+
 gblMaybe Nothing   = GblMaybe bitZero Nothing
 gblMaybe (Just x)  = GblMaybe bitOne (Just x)
 castFromJust (GblMaybe _ Nothing) = error "Casting GblMaybe known to be Nothing"
 castFromJust (GblMaybe _ (Just x))= x
+knownNothing (GblMaybe _ Nothing) = True
+knownNothing _ = False
 
 caseGblMaybe  :: (Garbled g,Garbled g') 
               => (Maybe g -> GcilMonad g') -> GblMaybe g 
@@ -137,7 +145,7 @@ caseGblMaybe f (GblMaybe p (Just x))  = do
   mux p nc jc
 
 gblIsNothing (GblMaybe _ Nothing) = return bitOne
-gblIsNothing (GblMaybe p _) = not p >>= return
+gblIsNothing (GblMaybe p _) = gcnot p >>= return
 
 newVariable w lineMaker = do  i <- getNxtIndex
                               putLine $ lineMaker $ varName i
@@ -178,11 +186,16 @@ rigidWidth op a b | aw /= bw  = undefined
                   | otherwise = calculate op aw [gblName a,gblName b]
                   where aw = gblWidth a; bw = gblWidth b
 
+--- Begin untested ---
+xorList [] = return bitZero
+xorList [x] = return x
+xorList (x:xs) = xorList xs >>= gcxor x
+
 andList [] = return bitOne
 andList [x] = return x
-andList (x:xs) = andList xs >>= and x
+andList (x:xs) = andList xs >>= gcand x
 
-lsb i = select 0 1 i >>= intToBit
+lsb i = select 0 1 i >>= return.intToBit
 
 splitLsb i = do b <- lsb i
                 r <- select 1 (gblWidth i) i
@@ -201,13 +214,14 @@ muxList i l | len == 1 || w == 0 = return $ head l
   w   = gblWidth i
   (le,lo) = splitOddEven l
 
+-- Remove the next two muxes as well TODO
 decoder x = decoderWithEnable bitOne x
 
 decoderWithEnable en x = aux en x [] where
   aux en [] acc = return (en:acc)
   aux en (x:xs) acc = do
-    b <- and x en
-    a <- xor b en
+    b <- gcand x en
+    a <- gcxor b en
     acc <- aux b xs acc
     aux a xs acc
 
@@ -223,10 +237,11 @@ muxListOffset lo i l | len == 1 || w == 0 = return $ head l
   len = length l
   w = gblWidth i
   (le,lo) = (if even lo then id else swap) (splitOddEven l)
+--- End untested ---
 
-not a   = calculate  "not" (gblWidth a) [gblName a]
-and a b = do andsUsed (gblWidth a); rigidWidth "and" a b
-xor a b = rigidWidth "xor" a b
+bitwiseNot a   = calculate  "not" (gblWidth a) [gblName a]
+bitwiseAnd a b = do andsUsed (gblWidth a); rigidWidth "and" a b
+bitwiseXor a b = rigidWidth "xor" a b
 select st en a = calculate "select" (en-st) [gblName a, show st, show en]
 trunc sz a = calculate "trunc" sz [gblName a, show sz] -- select 0 sz a
 concat as = calculate "concat" wsum (map gblName as) 
@@ -262,7 +277,7 @@ castSingleBit a = unbitify bitZero a
 greaterThanU a b = do addSubCost a b 
                       fixWidthU "gtu" (const 1) a b >>= castSingleBit
 
-greaterByBits :: Garbled g => g -> g -> GcilMonad GblBit
+greaterByBits :: Garbled g => g -> g -> GcilMonad GblBool
 greaterByBits a b = do  az <- bitify a
                         bz <- bitify b
                         greaterThanU az bz
@@ -270,28 +285,29 @@ greaterByBits a b = do  az <- bitify a
 equalU a b = do andsUsed $ max (gblWidth a) (gblWidth b) - 1
                 fixWidthU "equ" (const 1) a b >>= castSingleBit
 
-equalByBits :: Garbled g => g -> g -> GcilMonad GblBit
+equalByBits :: Garbled g => g -> g -> GcilMonad GblBool
 equalByBits a b = do  az <- bitify a
                       bz <- bitify b
                       equalU az bz
 
 -- Swap if c is true
---condSwap :: Garbled g => GblBit -> g -> g -> GcilMonad (g,g)
+--condSwap :: Garbled g => GblBool -> g -> g -> GcilMonad (g,g)
 condSwap c gA gB = do
   (ga,gb) <- equalSize gA gB
   abits <- bitify ga
   bbits <- bitify gb
   when (gblWidth abits/=gblWidth bbits) undefined
   let w = gblWidth abits
-  xr  <- xor abits bbits
+  xr  <- bitwiseXor abits bbits
   c'  <- bitRepeat w c
-  sw  <- gcand xr c'
-  ga' <- xor sw abits >>= unbitify ga
-  gb' <- xor sw bbits >>= unbitify gb
+  sw  <- bitwiseAnd xr c'
+  ga' <- bitwiseXor sw abits >>= unbitify ga
+  gb' <- bitwiseXor sw bbits >>= unbitify gb
   return (ga',gb')
 
 -- c == 0 -> return ga; c == 1 --> return gb
 mux c ga gb = condSwap c ga gb >>= return.fst
+ifThenElse c rt rf = mux c rf rt
 
 -- Note: function is currently unused
 -- chooseFirstOne c x chooses the x corresponding to the first c that is true
@@ -307,5 +323,6 @@ chooseFirstOne (c:cs) (x:xs) = do r <- chooseFirstOne cs xs
 
 -- Internal use aliases useful when they collide with Prelude
 gcand = Circuit.Gcil.Compiler.and
-gcconcat = Circuit.Gcil.Compiler.concat
 gcnot = Circuit.Gcil.Compiler.not
+gcxor = Circuit.Gcil.Compiler.xor
+gcconcat = Circuit.Gcil.Compiler.concat

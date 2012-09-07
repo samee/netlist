@@ -71,8 +71,8 @@ ifEqualElse a b t f = do
 
 nothingGreater a b = do  
   (a@(GblMaybe ap ad),b@(GblMaybe bp bd)) <- equalSize a b
-  anp <- bitNot ap
-  bnp <- bitNot bp
+  anp <- GC.not ap
+  bnp <- GC.not bp
   c <- greaterByBits (GblMaybe anp ad) (GblMaybe bnp bd)
   condSwap c a b
 
@@ -120,7 +120,7 @@ swapOnGreaterByBits a b = do
   condSwap c a b
 
 mixFromEither :: Garbled g => g -> Int -> Either GblInt g 
-              -> GcilMonad (GblBit,GblInt)
+              -> GcilMonad (GblBool,GblInt)
 mixFromEither dummy w eith = case eith of
                                   Left serial -> encode bitOne  serial
                                   Right value -> encode bitZero value
