@@ -50,7 +50,7 @@ bitZero = intToBit $ constArg 1 0
 bitOne  = intToBit $ constArg 1 1
 not x = bitwiseNot (bitToInt x) >>= return.intToBit
 and x y = bitwiseAnd (bitToInt x) (bitToInt y) >>= return.intToBit
-or  x y = and x y >>= xorList . (:[x,y])
+or  x y = gcand x y >>= xorList . (:[x,y])
 xor x y = bitwiseXor (bitToInt x) (bitToInt y) >>= return.intToBit
 
 class Garbled g where
@@ -195,11 +195,16 @@ andList [] = return bitOne
 andList [x] = return x
 andList (x:xs) = andList xs >>= gcand x
 
+lsb :: GblInt -> GcilMonad GblBool
 lsb i = select 0 1 i >>= return.intToBit
 
+splitLsb :: GblInt -> GcilMonad (GblBool,GblInt)
 splitLsb i = do b <- lsb i
-                r <- select 1 (gblWidth i) i
+                r <- if gblWidth i > 1 then select 1 (gblWidth i) i
+                     else return (constArg 0 0)
                 return (b,r)
+
+zipMux c al bl = forM (zip al bl) $ \(a,b) -> mux c a b
 
 -- Returns weird elements if i value >= len
 -- muxListOffset 0 i l
@@ -218,25 +223,28 @@ muxList i l | len == 1 || w == 0 = return $ head l
 decoder x = decoderWithEnable bitOne x
 
 decoderWithEnable en x = aux en x [] where
-  aux en [] acc = return (en:acc)
-  aux en (x:xs) acc = do
-    b <- gcand x en
-    a <- gcxor b en
-    acc <- aux b xs acc
-    aux a xs acc
+  aux en x acc | w == 0 = return (en:acc)
+               | otherwise = do
+                  (xh,xr) <- splitLsb x
+                  b <- gcand xh en
+                  a <- gcxor b  en
+                  acc <- aux b xr acc
+                  aux a xr acc
+    where w = gblWidth x
 
 -- Essentially the same as muxList (i-lo) l, but avoids the subtraction
-muxListOffset lo i l | len == 1 || w == 0 = return $ head l
+muxListOffset :: Garbled v => Int -> GblInt -> [v] -> GcilMonad v
+muxListOffset off i l | len == 1 || w == 0 = return $ head l
                      | len == 0 = undefined
                      | otherwise = recur
   where 
   recur = do  (ih,ir) <- splitLsb i
-              me <- muxListOffset ((lo+1)`div`2) ir le
-              mo <- muxListOffset (lo`div`2) ir lo
+              me <- muxListOffset ((off+1)`div`2) ir le
+              mo <- muxListOffset (off`div`2) ir lo
               mux ih me mo
   len = length l
   w = gblWidth i
-  (le,lo) = (if even lo then id else swap) (splitOddEven l)
+  (le,lo) = (if even off then id else swap) (splitOddEven l)
 --- End untested ---
 
 bitwiseNot a   = calculate  "not" (gblWidth a) [gblName a]
