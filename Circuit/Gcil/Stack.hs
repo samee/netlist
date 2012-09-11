@@ -83,8 +83,8 @@ adjust stk = if adjusted stk then return $ stk { adjusted = False} else do
   (pop0,pop1) <- liftM distrJust $ top oldparent
   afterPush<- zipMux needLSlide buff (drop 2 buff++[noth,noth])
   newbuff  <- zipMux needPop afterPush (pop0:pop1:take 4 buff)
-  deltaBh  <- ifThenElse needPush (constArg 3 (-2)) (constArg 3 0)
-          >>= ifThenElse needPop  (constArg 3   2 )
+  deltaBh  <- ifThenElse needLSlide (constArg 3 (-2)) (constArg 3 0)
+          >>= ifThenElse needPop    (constArg 3   2 )
   newbh    <- addS deltaBh (buffhead stk)
   return $ Stack  { buffer   = newbuff
                   , buffhead = newbh

@@ -57,7 +57,7 @@ burnRandomTest acts = writeTestCase "stacktest" ckt fst snd
 
   cktMain :: [GblInt] -> [GblInt] -> [StackTestAction] 
           -> GblBool -> Stack GblInt -> GcilMonad ()
-  cktMain [] [] [] c _ = newOutput (bitToInt c)
+  cktMain [] [] [] c stk = newOutput (bitToInt c)
   cktMain (var:push) pop (StackPush _:acts) c stk = do
     stk <- Gs.condPush Gc.bitOne var stk
     cktMain push pop acts c stk
@@ -69,6 +69,7 @@ burnRandomTest acts = writeTestCase "stacktest" ckt fst snd
               eq    <- equalU (castFromJust mb) exp
               Gc.andList [c,valid,eq]
     cktMain push pop acts c stk
+
 
 -- Testing the test generator
 testRandomTest acts = aux [] acts where

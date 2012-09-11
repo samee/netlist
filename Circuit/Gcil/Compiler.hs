@@ -186,7 +186,6 @@ rigidWidth op a b | aw /= bw  = undefined
                   | otherwise = calculate op aw [gblName a,gblName b]
                   where aw = gblWidth a; bw = gblWidth b
 
---- Begin untested ---
 xorList [] = return bitZero
 xorList [x] = return x
 xorList (x:xs) = xorList xs >>= gcxor x
@@ -198,12 +197,20 @@ andList (x:xs) = andList xs >>= gcand x
 lsb :: GblInt -> GcilMonad GblBool
 lsb i = select 0 1 i >>= return.intToBit
 
+msb i = select (w-1) w i >>= return.intToBit where w = gblWidth i
+
 splitLsb :: GblInt -> GcilMonad (GblBool,GblInt)
 splitLsb i = do b <- lsb i
                 r <- if gblWidth i > 1 then select 1 (gblWidth i) i
                      else return (constArg 0 0)
                 return (b,r)
 
+splitMsb i = do b <- msb i
+                r <- if gblWidth i > 1 then select 0 (gblWidth i - 1) i
+                     else return (constArg 0 0)
+                return (b,r)
+
+--- Begin untested ---
 zipMux c al bl = forM (zip al bl) $ \(a,b) -> mux c a b
 
 -- Returns weird elements if i value >= len
@@ -225,7 +232,7 @@ decoder x = decoderWithEnable bitOne x
 decoderWithEnable en x = aux en x [] where
   aux en x acc | w == 0 = return (en:acc)
                | otherwise = do
-                  (xh,xr) <- splitLsb x
+                  (xh,xr) <- splitMsb x
                   b <- gcand xh en
                   a <- gcxor b  en
                   acc <- aux b xr acc
