@@ -1,5 +1,6 @@
 module Circuit.Gcil.Stack where
 
+import Data.Maybe
 import Control.Monad
 import Prelude hiding (null)
 
@@ -15,18 +16,46 @@ data Stack a = Stack  { buffer   :: [GblMaybe a]
                       , buffhead :: GblInt
                       , rest     :: Maybe (Stack (a,a))
                       , adjusted :: Bool
+                      , maxLength:: Int
                       }
 
 buffsize = 5
 ptrwidth = 3
+buffmin = 2  -- buffer holds at least this many items after adjustment
+             -- if parent is not empty
+buffmax = 3  -- buffer holds upto this many items after adjustment, without
+             -- spilling into 'rest'. Change trimStack if this changes
 
 empty = Stack { buffer = replicate buffsize $ gblMaybe Nothing
-              , buffhead = constArg ptrwidth 2
+              , buffhead = constArg ptrwidth buffmin
               , rest = Nothing
               , adjusted = True
+              , maxLength = maxBound
               }
 
 singleton x = condPush bitOne x empty
+
+-- Internal method: called only after adjustment
+trimStack (stk@Stack{rest=Nothing}) = stk
+trimStack (stk@Stack{rest=Just par,maxLength=cap})
+  | cap <= buffmax = stk { rest = Nothing }
+  | otherwise      = stk
+
+parentStack :: Stack a -> Stack (a,a)
+parentStack (Stack{rest=Just par}) = par
+parentStack (stk@Stack{rest=Nothing,maxLength=cap})
+  = case rest $ capLength cap (stk{rest=Just empty}) of
+      Nothing -> empty
+      Just p -> p
+
+capLength :: Int -> Stack a -> Stack a
+capLength cap stk | cap <= buffmax = stk { maxLength = cap, rest = Nothing }
+                  | otherwise = case rest stk of
+                      Nothing -> stk { maxLength = cap }
+                      Just parent -> stk { maxLength = cap
+                                         , rest = Just (capLength newcap parent)
+                                         }
+  where newcap = (cap - buffmin) `div` 2
 
 top :: Garbled g => Stack g -> GcilMonad (GblMaybe g)
 top stk = muxListOffset 1 (buffhead stk) (buffer stk)
@@ -72,8 +101,8 @@ condOp pushCond pushVal popCond stk = do
 adjust :: Garbled v => Stack v -> GcilMonad (Stack v)
 adjust stk = if adjusted stk then return $ stk { adjusted = False} else do
   -- things can fail, buff!! things can be Nothing, and parent pops may not work
-  needLSlide <- greaterThanU (buffhead stk) (constArg 3 3)
-  needPop    <- greaterThanU (constArg 3 2) (buffhead stk)
+  needLSlide <- greaterThanU (buffhead stk) (constArg 3 (buffmin+1))
+  needPop    <- greaterThanU (constArg 3 buffmin) (buffhead stk)
   needPush   <- GC.and needLSlide =<< GC.not =<< hollowStack
   -- needPush implies not hollowStack, which implies the casting is safe below
   newpar     <- if knownNothing b0 || knownNothing b1 
@@ -84,19 +113,19 @@ adjust stk = if adjusted stk then return $ stk { adjusted = False} else do
   afterPush<- zipMux needLSlide buff (drop 2 buff++[noth,noth])
   newbuff  <- zipMux needPop afterPush (pop0:pop1:take 4 buff)
   deltaBh  <- ifThenElse needLSlide (constArg 3 (-2)) (constArg 3 0)
-          >>= ifThenElse needPop    (constArg 3   2 )
+          >>= ifThenElse needPop  (constArg 3   2 )
   newbh    <- addS deltaBh (buffhead stk)
-  return $ Stack  { buffer   = newbuff
-                  , buffhead = newbh
-                  , rest     = Just newpar
-                  , adjusted = True
-                  }
+  return $ trimStack $ stk  { buffer   = newbuff
+                , buffhead = newbh
+                , rest     = Just newpar
+                , adjusted = True
+                }
   where
   buff = buffer stk
   b0 = buff!!0
   b1 = buff!!1
   noth = gblMaybe Nothing
-  oldparent = case rest stk of Nothing -> empty; Just p -> p
+  oldparent = parentStack stk
   hollowStack = gblIsNothing b0
 
 distrJust (GblMaybe _ Nothing)      = (gblMaybe Nothing,gblMaybe Nothing)

@@ -9,6 +9,8 @@ import Circuit.Gcil.Stack as Gs
 import Test.Gcil
 
 intWidth = 8
+expn = 100
+maxn = 2*expn
 
 data StackTestAction =  StackPush Int -- value to be pushed
                       | StackPop Int  -- expected value
@@ -18,7 +20,7 @@ randomTest :: RandomGen g => g -> ([StackTestAction],g)
 randomTest rgen = aux opcount 0 [] rgen where
   aux 0 _ _ rgen = ([],rgen)
   aux opcount len stk rgen = flip runState rgen $ do
-    rlen <- state $ randomR (0,2*maxn)
+    rlen <- state $ randomR (0,maxn)
     let opc =  min opcount $ abs $ len-rlen
     if opc == 0 then state $ aux opcount len stk
     else if len < rlen then do
@@ -30,9 +32,8 @@ randomTest rgen = aux opcount 0 [] rgen where
       ops <- state $ aux (opcount-opc) (len-opc) stk'
       return $ map StackPop exp ++ ops
 
-  maxn = 100
   vrange = (0,2^intWidth-1)
-  opcount = 20*maxn
+  opcount = 20*expn
 
 -- XXX so batch arrays can actually use data interactively, we just cannot
 --   use read out data to calculate addresses. But could we put data on stack
@@ -47,7 +48,7 @@ burnRandomTest acts = writeTestCase "stacktest" ckt fst snd
   ckt = do
     pushVars <- replicateM pushC $ newInput intWidth 2
     popVars <- replicateM popC $ newInput intWidth 1
-    cktMain pushVars popVars acts bitOne Gs.empty
+    cktMain pushVars popVars acts bitOne (Gs.capLength maxn Gs.empty)
     return (zip (map gblName pushVars) pushVals, 
             zip (map gblName  popVars) popVals)
 
@@ -79,5 +80,6 @@ testRandomTest acts = aux [] acts where
   aux stk (StackPush x:acts) = aux (x:stk) acts
 
 runTests :: IO ()
-runTests = do acts <- getStdRandom randomTest
+runTests = do -- setStdGen $ mkStdGen 1
+              acts <- getStdRandom randomTest
               burnRandomTest acts
