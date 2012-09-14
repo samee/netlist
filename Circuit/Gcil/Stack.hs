@@ -57,6 +57,7 @@ capLength cap stk | cap <= buffmax = stk { maxLength = cap, rest = Nothing }
                                          }
   where newcap = (cap - buffmin) `div` 2
 
+-- Can I improve this if things have *just* been adjusted?
 top :: Garbled g => Stack g -> GcilMonad (GblMaybe g)
 top stk = muxListOffset 1 (buffhead stk) (buffer stk)
 null stk = mapM gblIsNothing (buffer stk) >>= GC.andList
@@ -105,10 +106,12 @@ adjust stk = if adjusted stk then return $ stk { adjusted = False} else do
   needPop    <- greaterThanU (constArg 3 buffmin) (buffhead stk)
   needPush   <- GC.and needLSlide =<< GC.not =<< hollowStack
   -- needPush implies not hollowStack, which implies the casting is safe below
-  newpar     <- if knownNothing b0 || knownNothing b1 
-                  then condPop needPop oldparent
-                  else condOp needPush (castFromJust b0,castFromJust b1) 
-                          needPop oldparent
+  newpar     <- if maxLength stk <= buffmin 
+                  then return Nothing
+                  else (if knownNothing b0 || knownNothing b1 
+                    then condPop needPop oldparent
+                    else condOp needPush (castFromJust b0,castFromJust b1) 
+                            needPop oldparent) >>= return.Just
   (pop0,pop1) <- liftM distrJust $ top oldparent
   afterPush<- zipMux needLSlide buff (drop 2 buff++[noth,noth])
   newbuff  <- zipMux needPop afterPush (pop0:pop1:take 4 buff)
@@ -117,7 +120,7 @@ adjust stk = if adjusted stk then return $ stk { adjusted = False} else do
   newbh    <- addS deltaBh (buffhead stk)
   return $ trimStack $ stk  { buffer   = newbuff
                 , buffhead = newbh
-                , rest     = Just newpar
+                , rest     = newpar
                 , adjusted = True
                 }
   where

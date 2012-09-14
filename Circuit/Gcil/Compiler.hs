@@ -12,7 +12,7 @@ import Util
 
 data GcilState = GcilState { nxtIndex :: Int
                            , compileTarget :: Handle
-                           , totalAndGates :: Int
+                           , totalAndGates :: !Int
                            }
 initState handle = GcilState  { nxtIndex = 1
                               , compileTarget = handle
