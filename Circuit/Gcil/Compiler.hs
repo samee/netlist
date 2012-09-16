@@ -205,6 +205,8 @@ splitLsb i = do b <- lsb i
                      else return (constArg 0 0)
                 return (b,r)
 
+dropMsb i = select 0 (gblWidth i - 1) i
+
 splitMsb i = do b <- msb i
                 r <- if gblWidth i > 1 then select 0 (gblWidth i - 1) i
                      else return (constArg 0 0)
@@ -228,6 +230,11 @@ muxList i l | len == 1 || w == 0 = return $ head l
 
 -- Remove the next two muxes as well TODO
 decoder x = decoderWithEnable bitOne x
+
+decoderUnit en b = do
+  y <- and en b
+  x <- xor en y
+  return (x,y)
 
 decoderWithEnable en x = aux en x [] where
   aux en x acc | w == 0 = return (en:acc)
@@ -283,6 +290,10 @@ addU a b = do r <- addWithCarryU a b
 addS a b = do addSubCost a b
               r <- fixWidthS "add" (+1) a b
               trunc (gblWidth r - 1) r
+
+-- if c then a+b else a
+condAddS c a b = do d <- ifThenElse c b $ constArg (gblWidth b) 0
+                    addS a d
 
 addWithCarryU a b = do addSubCost a b; fixWidthU "add" (+1) a b
 
