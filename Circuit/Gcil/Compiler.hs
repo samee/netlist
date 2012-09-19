@@ -232,8 +232,8 @@ muxList i l | len == 1 || w == 0 = return $ head l
 decoder x = decoderWithEnable bitOne x
 
 decoderUnit en b = do
-  y <- and en b
-  x <- xor en y
+  y <- gcand en b
+  x <- gcxor en y
   return (x,y)
 
 decoderWithEnable en x = aux en x [] where
