@@ -1,6 +1,7 @@
 module Circuit.Gcil.Queue 
 ( Queue
 , Circuit.Gcil.Queue.empty
+, capLength
 , front
 , Circuit.Gcil.Queue.null
 , condPush, condPop) where
@@ -17,6 +18,7 @@ data Queue a = Queue { buffer :: [GblMaybe a]
                      , parent :: Maybe (Queue (a,a))
                      , headAdjusted :: Bool   -- pop-side
                      , tailAdjusted :: Bool   -- push-side
+                     , maxLength :: Int
                      }
 
 -- Internal configs
@@ -34,6 +36,7 @@ empty = Queue { buffer = replicate buffSize $ gblMaybe Nothing
               , parent = Nothing
               , headAdjusted = True
               , tailAdjusted = True
+              , maxLength = maxBound
               }
 
 
@@ -45,6 +48,17 @@ null q = equalU (headPtr q) (tailPtr q)
 
 gqnull = Circuit.Gcil.Queue.null
 gqempty = Circuit.Gcil.Queue.empty
+
+parentLength len = (len-2) `div` 2
+
+capLength :: Int -> Queue a -> Queue a
+capLength len q = q { maxLength = len
+                    , parent = cappedParent
+                    }
+  where
+  cappedParent = case parent q of 
+    Nothing -> Nothing
+    Just p -> Just $ capLength (parentLength len) p
 
 condPush :: Garbled g => GblBool -> g -> Queue g -> GcilMonad (Queue g)
 condPush c v q = do
@@ -91,7 +105,7 @@ parentNull q = case parent q of
 
 adjustTail q | tailAdjusted q         = return $ q { tailAdjusted = False }
              | knownNothing (buff!!4) = return $ q { tailAdjusted = True  }
-             | knownNothing (buff!!3) = error "Stack tail problem"
+             | knownNothing (buff!!3) = error "Queue tail problem"
              | otherwise = do
                let parentPayload = (assumeJust 3, assumeJust 4)
                tailSlide <- greaterThanU (tailPtr q) (constArg ptrWidth 4)
@@ -108,16 +122,21 @@ adjustTail q | tailAdjusted q         = return $ q { tailAdjusted = False }
                                    (constArg ptrWidth (-2))
                newtail <- zipMux tailSlide (bufferTail q) 
                                            (last buff:[noth,noth])
-               newPar  <- condPush slideToParent parentPayload oldparent
+               newPar  <- if maxlen <= 3 then return Nothing
+                          else liftM Just $ condPush slideToParent 
+                                  parentPayload oldparent
                return $ q { buffer = newhead++newtail
                           , headPtr = hptr
                           , tailPtr = tptr
-                          , parent = Just newPar
+                          , parent = newPar
                           , tailAdjusted = True
                           }
   where
-  oldparent = case parent q of Nothing -> empty; Just p -> p
+  oldparent = case parent q of 
+    Nothing -> capLength (parentLength maxlen) empty
+    Just p  -> p
   buff = buffer q
+  maxlen = maxLength q
   assumeJust i = castFromJust (buff!!i)
 
 class Garbled g => GblShow g where

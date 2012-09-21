@@ -43,10 +43,10 @@ popRandom n q = do
   (q2,acts) <- popRandom (n-1) q1
   return (q2, QueuePop x:acts)
 
-compileActs acts = do
+compileActs maxQLength acts = do
   pushVars <- replicateM pushC (newInput intWidth 2)
   popVars  <- replicateM popC  (newInput intWidth 1)
-  res <- cktMain pushVars popVars acts Gq.empty
+  res <- cktMain pushVars popVars acts $ Gq.capLength maxQLength Gq.empty
   newOutput (bitToInt res)
   return  ( zip (map gblName pushVars) pushVals
           , zip (map gblName  popVars) popVals )
@@ -70,10 +70,13 @@ compileActs acts = do
       eq <- equalU (Gc.castFromJust mb) x
       andList [r,b,eq]
 
-burnRandomTest acts = writeTestCase "queuetest" (compileActs acts) fst snd
+burnRandomTest maxQLength acts 
+  = writeTestCase "queuetest" (compileActs maxQLength acts) fst snd
 
 splitPushPop [] = ([],[])
 splitPushPop (QueuePush x: l) = (x:a,b) where (a,b) = splitPushPop l
 splitPushPop (QueuePop  x: l) = (a,x:b) where (a,b) = splitPushPop l
 
-runTests = getStdRandom (randomTest 2000 200) >>= burnRandomTest
+qsize = 200
+
+runTests = getStdRandom (randomTest 2000 qsize) >>= burnRandomTest qsize
