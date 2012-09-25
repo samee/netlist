@@ -1,6 +1,7 @@
 module Circuit.Gcil.Queue 
 ( Queue
 , Circuit.Gcil.Queue.empty
+, fromList
 , capLength
 , front
 , Circuit.Gcil.Queue.null
@@ -40,6 +41,34 @@ empty = Queue { buffer = replicate buffSize $ gblMaybe Nothing
               }
 
 
+fromList :: Garbled g => [g] -> Queue g
+fromList [] = empty
+fromList [x] = empty { buffer = [noth,noth,noth,gjust x,noth,noth]
+                     , tailPtr = constArg ptrWidth 4
+                     , tailAdjusted = False
+                     }
+fromList (x1:x2:l) 
+  | even $ length l = (twoItems x1 x2) { parent = parentList l }
+  | otherwise = (threeItems x1 x2 (last l)) { parent = parentList $ init l }
+  where
+  twoItems x1 x2 = empty  { buffer = [noth,gjust x1,gjust x2,noth,noth,noth]
+                          , headPtr = constArg ptrWidth 1
+                          }
+  threeItems x1 x2 x3 = empty { buffer =  [noth,gjust x1,gjust x2
+                                          ,gjust x3,noth,noth]
+                              , headPtr = constArg ptrWidth 1
+                              , tailPtr = constArg ptrWidth 4
+                              , tailAdjusted = False
+                              }
+  parentList [] = Nothing
+  parentList l = Just $ fromList $ pairUp l
+
+pairUp [] = []
+pairUp (a:b:l) = (a,b):pairUp l
+pairUp [_]= undefined
+
+
+
 front q = muxList (headPtr q) $ take 5 $ buffer q
 -- Apparently I do not need to check parent
 null q = equalU (headPtr q) (tailPtr q)
@@ -60,6 +89,7 @@ capLength len q = q { maxLength = len
     Nothing -> Nothing
     Just p -> Just $ capLength (parentLength len) p
 
+-- If this changes significantly, fromList may also have to change
 condPush :: Garbled g => GblBool -> g -> Queue g -> GcilMonad (Queue g)
 condPush c v q = do
   dec <- hackeyDecoder c $ tailPtr q
@@ -98,6 +128,7 @@ resetIfEmpty q = do
   return $ q { headPtr = hptr, tailPtr = tptr }
 
 -- Internal use
+gjust = gblMaybe.Just
 noth = gblMaybe Nothing
 parentNull q = case parent q of
                     Nothing  -> return Gc.bitOne

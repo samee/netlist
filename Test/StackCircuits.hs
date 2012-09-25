@@ -21,7 +21,7 @@ randomTest rgen = aux opcount 0 [] rgen where
   aux 0 _ _ rgen = ([],rgen)
   aux opcount len stk rgen = flip runState rgen $ do
     rlen <- state $ randomR (0,maxn)
-    let opc =  min opcount $ abs $ len-rlen
+    let opc =  Prelude.min opcount $ abs $ len-rlen
     if opc == 0 then state $ aux opcount len stk
     else if len < rlen then do
       newvals <- replicateM opc $ state $ randomR vrange

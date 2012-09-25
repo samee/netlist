@@ -88,7 +88,7 @@ readArray arr addrs = mapM resizeAddr addrs >>=
   eltw = eltWidth arr
   addrw = indexSize $ arraySize arr
   serw  = indexSize $ length addrs
-  mixw  = max eltw serw
+  mixw  = P.max eltw serw
   sampleElt = get 0 arr
   sampleSer = constArg serw 0
   resizeAddr addr = resizeUInt addrw addr

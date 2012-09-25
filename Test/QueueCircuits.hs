@@ -24,8 +24,8 @@ randomTest opCount maxlen rgen = runState (aux S.empty opCount) rgen
   aux _ 0 = return []
   aux q opCount = do
     rlen <- state $ randomR (0,maxlen)
-    (q,acts) <- if len<rlen then pushRandom (min opCount $ rlen-len) q
-                else popRandom (min opCount $ len-rlen) q
+    (q,acts) <- if len<rlen then pushRandom (Prelude.min opCount $ rlen-len) q
+                else popRandom (Prelude.min opCount $ len-rlen) q
     liftM (acts++) $ aux q (opCount-length acts)
 
     where

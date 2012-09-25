@@ -5,6 +5,7 @@ import Control.Monad.Writer.Lazy
 --import qualified Data.ByteString.Lazy.Char8 as B
 import Data.Tuple
 import Debug.Trace
+import Prelude as P
 import System.IO
 
 import Circuit.Array
@@ -121,7 +122,7 @@ instance Garbled a => Garbled (GblMaybe a) where
                             return (GblMaybe p1 (Just x1),
                                     GblMaybe p2 (Just x2))
 
--- Conditionally converts to Nothing using a single and gate
+-- Conditionally converts to Nothing using a single AND gate
 -- condNothing True x = gblMaybe Nothing
 -- condNothing False x = x
 condNothing c (GblMaybe _ Nothing) = return $ gblMaybe Nothing
@@ -212,7 +213,6 @@ splitMsb i = do b <- msb i
                      else return (constArg 0 0)
                 return (b,r)
 
---- Begin untested ---
 zipMux c al bl = forM (zip al bl) $ \(a,b) -> mux c a b
 
 -- Returns weird elements if i value >= len
@@ -229,6 +229,7 @@ muxList i l | len == 1 || w == 0 = return $ head l
   (le,lo) = splitOddEven l
 
 -- Remove the next two muxes as well TODO
+-- untested
 decoder x = decoderWithEnable bitOne x
 
 decoderUnit en b = do
@@ -259,7 +260,6 @@ muxListOffset off i l | len == 1 || w == 0 = return $ head l
   len = length l
   w = gblWidth i
   (le,lo) = (if even off then id else swap) (splitOddEven l)
---- End untested ---
 
 bitwiseNot a   = calculate  "not" (gblWidth a) [gblName a]
 bitwiseAnd a b = do andsUsed (gblWidth a); rigidWidth "and" a b
@@ -281,7 +281,7 @@ unconcat ls a | lensum > gblWidth a = undefined "unconcat lengths out of range"
                    return $ init res
 
 
-addSubCost a b = andsUsed $ max (gblWidth a) (gblWidth b)
+addSubCost a b = andsUsed $ P.max (gblWidth a) (gblWidth b)
 
 -- addU may overflow, addWithCarryU won't but produces results a bit wider
 addU a b = do r <- addWithCarryU a b
@@ -291,6 +291,9 @@ addS a b = do addSubCost a b
               r <- fixWidthS "add" (+1) a b
               trunc (gblWidth r - 1) r
 
+-- Assumes a>=b. Unnecessarily uses an extra AND gate
+subU a b = do addSubCost a b; fixWidthU "sub" id a b
+              
 -- if c then a+b else a
 condAddS c a b = do d <- ifThenElse c b $ constArg (gblWidth b) 0
                     addS a d
@@ -303,12 +306,17 @@ castSingleBit a = unbitify bitZero a
 greaterThanU a b = do addSubCost a b 
                       fixWidthU "gtu" (const 1) a b >>= castSingleBit
 
+max a b = do andsUsed $ 2*P.max (gblWidth a) (gblWidth b)
+             fixWidthU "max" id a b
+min a b = do andsUsed $ 2*P.max (gblWidth a) (gblWidth b)
+             fixWidthU "min" id a b
+
 greaterByBits :: Garbled g => g -> g -> GcilMonad GblBool
 greaterByBits a b = do  az <- bitify a
                         bz <- bitify b
                         greaterThanU az bz
 
-equalU a b = do andsUsed $ max (gblWidth a) (gblWidth b) - 1
+equalU a b = do andsUsed $ P.max (gblWidth a) (gblWidth b) - 1
                 fixWidthU "equ" (const 1) a b >>= castSingleBit
 
 equalByBits :: Garbled g => g -> g -> GcilMonad GblBool
@@ -352,3 +360,4 @@ gcand = Circuit.Gcil.Compiler.and
 gcnot = Circuit.Gcil.Compiler.not
 gcxor = Circuit.Gcil.Compiler.xor
 gcconcat = Circuit.Gcil.Compiler.concat
+gcmax = Circuit.Gcil.Compiler.max
