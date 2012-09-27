@@ -1,6 +1,7 @@
 module Circuit.Gcil.Demo where
 
 import Control.Monad
+import Data.List
 
 import Circuit.Gcil.Compiler as Gc
 import Circuit.Gcil.Queue as Gq
@@ -17,7 +18,7 @@ i = j = 0
 while(i<n)
 {
   result = max result (f theta[i] theta[j])
-  if ((j+1<n) && (f theta[i] theta[j] <= f theta[i] theta[j+1]))
+  if ((j+1<n) && (f theta[i] theta[j] <= modDiff maxTheta theta[i] theta[j+1]))
     j++
   else
     i++
@@ -35,13 +36,13 @@ wideAngle theta maxTheta = do
       inRange = Gq.fromList [head theta]
   (result,_,_,_) <- foldM (\(result,cur,unseen,inRange) _ -> do
     lastInRange  <- liftM castFromJust $ Gq.front inRange
-    curAngle <- f lastInRange cur
+    curAngle <- modDiff maxTheta lastInRange cur
     result   <- Gc.max result curAngle
     nextmb   <- Gq.front unseen
     (c,cur)  <- Gc.caseGblMaybe (\mb -> case mb of 
                   Nothing -> return (bitZero,cur)
                   Just next -> do 
-                    nextAngle <- f lastInRange next
+                    nextAngle <- modDiff maxTheta lastInRange next
                     c' <- Gc.not =<< greaterThanU curAngle nextAngle
                     return (c',next)
                   ) nextmb
@@ -54,8 +55,18 @@ wideAngle theta maxTheta = do
   return result
   where
   n = length theta
-  -- f a b assumes a <= b < maxtheta
-  f a b = do 
-    x <- subU b a
-    y <- subU maxTheta x
-    Gc.min x y
+
+-- modDiff m a b assumes a <= b < maxtheta
+modDiff m a b = do 
+  x <- subU b a
+  y <- subU m x
+  Gc.min x y
+
+fold1M f l = foldM f (head l) (tail l)
+
+-- Naive O(n^2) comparison
+wideAngleNaive theta maxTheta = join $ fold1M (liftM2 Gc.max) l
+  where
+  allPair = [(a,b) | (a,bs) <- zip theta (tail $ tails theta), b <- bs]
+  l = map (uncurry $ modDiff maxTheta) allPair
+

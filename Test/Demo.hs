@@ -6,7 +6,7 @@ import Data.List
 import System.Random
 
 import Circuit.Gcil.Compiler
-import Circuit.Gcil.Demo
+import Circuit.Gcil.Demo as Demo
 import Test.Gcil
 import Util
 
@@ -18,11 +18,11 @@ randomWideAngleTest thMax n rgen = flip runState rgen $ do
   l <- replicateM n $ state $ randomR (0,thMax-1)
   return (sort l,localWideAngle thMax l)
 
-wideAngleCase theta thMax expected = do
+wideAngleCase algo theta thMax expected = do
   thetaVars   <- replicateM (length theta) (newInput thetaWidth 1)
   thMaxVar    <- newInput thetaWidth 1
   expectedVar <- newInput thetaWidth 2
-  result      <- wideAngle thetaVars thMaxVar
+  result      <- algo thetaVars thMaxVar
   eq <- ignoreAndsUsed $ equalU expectedVar result
   newOutput (bitToInt eq)
   return ( [(gblName expectedVar, expected)]
@@ -31,8 +31,11 @@ wideAngleCase theta thMax expected = do
   where thetaWidth = valueSize thMax
       
 
-burnWideAngleTest theta thMax expected 
-  = writeTestCase "wideAngleTest" (wideAngleCase theta thMax expected) fst snd
+burnWideAngleTest theta thMax expected = do
+  writeTestCase "wideAngleTest" 
+    (wideAngleCase Demo.wideAngle theta thMax expected) fst snd
+  writeTestCase "wideAngleNaiveTest" 
+    (wideAngleCase Demo.wideAngleNaive theta thMax expected) fst snd
 
 naiveCost thMax n = fcost + maxcost where
   fcost = 4*w*fcount -- 2 subtractions and a min operation
@@ -40,8 +43,12 @@ naiveCost thMax n = fcost + maxcost where
   fcount = (n*(n-1)) `div` 2
   w = valueSize thMax
 
-runTests = do let thMax = 256; n = 200
-              (l,expected) <- getStdRandom (randomWideAngleTest thMax n)
-              burnWideAngleTest l thMax expected
-              putStrLn $ "Naive method would use "
-                          ++show (naiveCost thMax n)++" gates"
+runTests = forM_ ns $ \n -> do
+             putStrLn $ "Case n = "++show n
+             (l,expected) <- getStdRandom (randomWideAngleTest thMax n)
+             burnWideAngleTest l thMax expected
+             putStrLn $ "Naive method would use "
+                         ++show (naiveCost thMax n)++" gates"
+  where
+  thMax = 256
+  ns = [128, 256, 512, 1024, 2048]
