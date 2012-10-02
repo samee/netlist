@@ -129,6 +129,9 @@ condNothing c (GblMaybe _ Nothing) = return $ gblMaybe Nothing
 condNothing c (GblMaybe p x) = do  c' <- gcnot c >>= gcand p
                                    return $ GblMaybe c' x
 
+gblNoth = gblMaybe Nothing
+gblJust = gblMaybe.Just
+
 gblMaybe Nothing   = GblMaybe bitZero Nothing
 gblMaybe (Just x)  = GblMaybe bitOne (Just x)
 castFromJust (GblMaybe _ Nothing) = error "Casting GblMaybe known to be Nothing"
@@ -247,11 +250,11 @@ decoderWithEnable en x = aux en x [] where
                   aux a xr acc
     where w = gblWidth x
 
--- Essentially the same as muxList (i-lo) l, but avoids the subtraction
+-- Essentially the same as muxList (i-off) l, but avoids the subtraction
 muxListOffset :: Garbled v => Int -> GblInt -> [v] -> GcilMonad v
 muxListOffset off i l | len == 1 || w == 0 = return $ head l
-                     | len == 0 = undefined
-                     | otherwise = recur
+                      | len == 0 = undefined
+                      | otherwise = recur
   where 
   recur = do  (ih,ir) <- splitLsb i
               me <- muxListOffset ((off+1)`div`2) ir le

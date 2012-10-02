@@ -1,135 +1,130 @@
-module Circuit.Gcil.Stack where
+module Circuit.Gcil.Stack
+( Stack
+, empty
+--, fromList
+, capLength
+, top
+, Circuit.Gcil.Stack.null
+, condPop
+, condPush
+) where
 
-import Data.Maybe
 import Control.Monad
-import Prelude hiding (null)
+import Circuit.Gcil.Compiler as Gc
 
-import Circuit.Gcil.Compiler as GC
-
--- Unless I have a reason to mux between stacks (I shouldn't), 
--- the rest field stays Maybe, not GblMaybe. If you are muxing between stacks
--- you should check to see if something similar can be done by tweaking push
--- and pop conditions. Note, we do NOT implement Garbled (Stack a), by choice.
--- That would create all sorts of problems related with the 'adjusted' field,
--- resizing to equal size, and other things.
-data Stack a = Stack  { buffer   :: [GblMaybe a]
-                      , buffhead :: GblInt
-                      , rest     :: Maybe (Stack (a,a))
-                      , adjusted :: Bool
-                      , maxLength:: Int
-                      }
+data Stack a = Stack { buffer :: [GblMaybe a]
+                     , headPtr :: GblInt
+                     , parent :: Maybe (Stack (a,a))
+                     , pushAdjusted :: Bool
+                     , popAdjusted :: Bool
+                     , maxLength :: Int
+                     }
 
 buffsize = 5
-ptrwidth = 3
-buffmin = 2  -- buffer holds at least this many items after adjustment
-             -- if parent is not empty
-buffmax = 3  -- buffer holds upto this many items after adjustment, without
-             -- spilling into 'rest'. Change trimStack if this changes
+ptrWidth = 3
 
-empty = Stack { buffer = replicate buffsize $ gblMaybe Nothing
-              , buffhead = constArg ptrwidth buffmin
-              , rest = Nothing
-              , adjusted = True
+empty = Stack { buffer = replicate buffsize Gc.gblNoth
+              , headPtr = constArg ptrWidth 2
+              , parent = Nothing
+              , pushAdjusted = True
+              , popAdjusted = True
               , maxLength = maxBound
               }
 
-singleton x = condPush bitOne x empty
+-- I know top will never be in the last slot (ensured by pushAdjust)
+top stk = muxListOffset 1 (headPtr stk) (init $ buffer stk)
 
--- Internal method: called only after adjustment
-trimStack (stk@Stack{rest=Nothing}) = stk
-trimStack (stk@Stack{rest=Just par,maxLength=cap})
-  | cap <= buffmax = stk { rest = Nothing }
-  | otherwise      = stk
+null stk = do a <- gblIsNothing (buffer stk !! 1)
+              b <- equalU (constArg ptrWidth 2) (headPtr stk)
+              Gc.and a b
 
-parentStack :: Stack a -> Stack (a,a)
-parentStack (Stack{rest=Just par}) = par
-parentStack (stk@Stack{rest=Nothing,maxLength=cap})
-  = case rest $ capLength cap (stk{rest=Just empty}) of
-      Nothing -> empty
-      Just p -> p
+stknull = Circuit.Gcil.Stack.null
 
 capLength :: Int -> Stack a -> Stack a
-capLength cap stk | cap <= buffmax = stk { maxLength = cap, rest = Nothing }
-                  | otherwise = case rest stk of
-                      Nothing -> stk { maxLength = cap }
-                      Just parent -> stk { maxLength = cap
-                                         , rest = Just (capLength newcap parent)
-                                         }
-  where newcap = (cap - buffmin) `div` 2
+capLength cap stk = case parent stk of 
+                         Nothing -> capped
+                         Just p ->  capped { parent = Just $ capLength plen p }
+  where capped = stk { maxLength = cap }
+        plen = (cap - 2) `div` 2
 
--- Can I improve this if things have *just* been adjusted?
-top :: Garbled g => Stack g -> GcilMonad (GblMaybe g)
-top stk = muxListOffset 1 (buffhead stk) (buffer stk)
-null stk = mapM gblIsNothing (buffer stk) >>= GC.andList
+trimStack stk = if maxLength stk <= 3 then stk { parent = Nothing } else stk
 
--- Same as condOp False _ True, but does not require a dummy 2nd argument
-condPop :: Garbled v => GblBool -> Stack v -> GcilMonad (Stack v)
-condPop popCond stk = do
-  popDone <- null stk >>= GC.not >>= GC.and popCond
-  popper <- decoderWithEnable popDone $ buffhead stk
-  newbuff <- forM (zip (buffer stk) (drop 1 popper)) $ \(elt,zap) ->
-                condNothing zap elt
-  newbh <- ifThenElse popDone (constArg 3 (-1)) (constArg 3 0)
-        >>= addS (buffhead stk)
-  adjust $ stk { buffer = newbuff, buffhead = newbh }
+-- Assumes that 1 <= headPtr <= 4
+-- 1 <= headPtr is ensured by adjustPop, while headPtr <= 4 is ensured
+-- by adjustPush, since otherwise we would not have enough space for a push
+condPush :: Garbled a => GblBool -> a -> Stack a -> GcilMonad (Stack a)
+condPush c x stk = do p <- select 0 2 $ headPtr stk
+                      write <- decoderWithEnable c p
+                      hp <- addU (bitToInt c) (headPtr stk)
+                      newtail <- forM (zip write tl) $ \(w,mb) ->
+                                    mux w mb (gblJust x)
+                      adjustPush $ stk  { buffer = spliceBack newtail
+                                        , headPtr = hp }
+  where
+  tl = rotate 1 $ tail $ buffer stk
+  spliceBack newtail = (head $ buffer stk) : rotate (-1) newtail
 
-condPush b v stk = condOp b v bitZero stk
+-- Right rotates a list for positive offset
+rotate 0 l = l
+rotate off l = tl++hd where (hd,tl) = splitAt p l
+                            p = if off < 0 then -off else length l - off
 
--- Does a conditional push followed by a conditional pop. Pushing AND popping
--- in the same call therefore has no effect. Popping an empty stack also has
--- no effect
-condOp :: Garbled v => GblBool -> v -> GblBool -> Stack v -> GcilMonad (Stack v)
-condOp pushCond pushVal popCond stk = do
-  -- TODO get a more efficient decoder for 5 possibilities at different lo
-  popDone  <- GC.not pushCond >>= GC.and popCond
-  pushDone <- GC.xor popDone pushCond >>= GC.xor popCond -- push AND NOT pop
-  popDone  <- null stk >>= GC.not >>= GC.and popDone
+-- Assumes that 1 <= headPtr <= 4
+-- headPtr <= 4 is ensured by adjustPush, while 1 <= headPtr is needed
+-- if pop is to succeed
 
-  popper   <- decoderWithEnable popDone  $ buffhead stk
-  pusher   <- decoderWithEnable pushDone $ buffhead stk
-  newbuff  <- forM (zip (buffer stk) (drop 1 popper)) $ \(elt,zap) ->
-                condNothing zap elt
-  newbuff  <- forM (zip newbuff pusher) $ \(elt,pc) ->
-                mux pc elt $ gblMaybe (Just pushVal)
-  bhTouch  <- xor pushDone popDone
-  -- if popDone then deltaBh == -1
-  -- else if pushDone then deltaBh == +1
-  -- else deltaBh = 0
-  deltaBh  <- GC.concat [bitToInt popDone, bitToInt bhTouch]
-  newbh    <- addS deltaBh (buffhead stk) >>= trunc ptrwidth
-  adjust $ stk { buffer = newbuff, buffhead = newbh }
+condPop :: Garbled a => GblBool -> Stack a -> GcilMonad (Stack a)
+condPop c stk = do 
+  c <- Gc.and c =<< Gc.not =<< stknull stk
+  p <- select 0 2 $ headPtr stk
+  hp <- condAddS c (headPtr stk) (constArg ptrWidth (-1))
+  erase <- decoderWithEnable c hp
+  newinit <- forM (zip erase $ init $ buffer stk) $ uncurry condNothing
+  adjustPop $ stk  { buffer = newinit ++ [buffer stk !! 4]
+                   , headPtr = hp
+                   }
 
-adjust :: Garbled v => Stack v -> GcilMonad (Stack v)
-adjust stk = if adjusted stk then return $ stk { adjusted = False} else do
-  -- things can fail, buff!! things can be Nothing, and parent pops may not work
-  needLSlide <- greaterThanU (buffhead stk) (constArg 3 (buffmin+1))
-  needPop    <- greaterThanU (constArg 3 buffmin) (buffhead stk)
-  needPush   <- GC.and needLSlide =<< GC.not =<< hollowStack
-  -- needPush implies not hollowStack, which implies the casting is safe below
-  newpar     <- if maxLength stk <= buffmin 
-                  then return Nothing
-                  else (if knownNothing b0 || knownNothing b1 
-                    then condPop needPop oldparent
-                    else condOp needPush (castFromJust b0,castFromJust b1) 
-                            needPop oldparent) >>= return.Just
-  (pop0,pop1) <- liftM distrJust $ top oldparent
-  afterPush<- zipMux needLSlide buff (drop 2 buff++[noth,noth])
-  newbuff  <- zipMux needPop afterPush (pop0:pop1:take 4 buff)
-  deltaBh  <- ifThenElse needLSlide (constArg 3 (-2)) (constArg 3 0)
-          >>= ifThenElse needPop  (constArg 3   2 )
-  newbh    <- addS deltaBh (buffhead stk)
-  return $ trimStack $ stk  { buffer   = newbuff
-                , buffhead = newbh
-                , rest     = newpar
-                , adjusted = True
+-- Unless buffer 0 and 1 are known nothing, we need a new parent
+adjustPush :: Garbled a => Stack a -> GcilMonad (Stack a)
+adjustPush stk | pushAdjusted stk = return $ stk { pushAdjusted = False }
+               | otherwise = do
+  slideLcond <- greaterThanU (headPtr stk) (constArg ptrWidth 3)
+  newhp <- condAddS slideLcond (headPtr stk) (constArg ptrWidth (-2))
+  pushC <- Gc.and slideLcond =<< Gc.not =<< hollowHead buff
+  newbuff <- zipMux slideLcond buff $ drop 2 buff ++ [gblNoth,gblNoth]
+  newParent <- if knownNothing $ head buff then return $ parent stk
+               else if mxlen <= 3 then return Nothing
+               else liftM Just $ condPush pushC pushItem oldParent
+  return $ stk  { buffer = newbuff, headPtr = newhp, parent = newParent
+                , pushAdjusted = True
                 }
   where
   buff = buffer stk
-  b0 = buff!!0
-  b1 = buff!!1
-  noth = gblMaybe Nothing
-  oldparent = parentStack stk
-  hollowStack = gblIsNothing b0
+  hollowHead l = gblIsNothing $ head l
+  mxlen = maxLength stk
+  pushItem = (Gc.castFromJust $ buff !! 0, Gc.castFromJust $ buff !! 1)
+  oldParent = case parent stk of 
+                   Nothing -> empty { maxLength = (mxlen - 2) `div` 2 }
+                   Just p  -> p
 
-distrJust (GblMaybe _ Nothing)      = (gblMaybe Nothing,gblMaybe Nothing)
-distrJust (GblMaybe p (Just (a,b))) = (GblMaybe p (Just a),GblMaybe p (Just b))
+adjustPop :: Garbled a => Stack a -> GcilMonad (Stack a)
+adjustPop stk | popAdjusted stk = return $ stk { popAdjusted = False }
+              | otherwise = do
+  slideRcond <- greaterThanU (constArg ptrWidth 2) (headPtr stk)
+  newhp <- condAddS slideRcond (headPtr stk) (constArg ptrWidth 2)
+  (popItems,newParent) <- case parent stk of 
+                               Nothing -> return ([gblNoth,gblNoth],Nothing)
+                               Just p  -> do 
+                                  pres <- liftM Just $ condPop slideRcond p
+                                  mbpair <- top p
+                                  return (distrJust mbpair,pres)
+  newbuff <- zipMux slideRcond buff $ popItems ++ take 4 buff
+  return $ stk  { buffer = newbuff, headPtr = newhp
+                , parent = newParent
+                , popAdjusted = True
+                }
+  where
+  buff = buffer stk
+  distrJust (GblMaybe _ Nothing) = [gblNoth,gblNoth]
+  distrJust (GblMaybe p (Just (a,b))) = [ GblMaybe p (Just a)
+                                        , GblMaybe p (Just b) ]
