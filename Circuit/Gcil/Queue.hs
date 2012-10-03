@@ -8,6 +8,7 @@ module Circuit.Gcil.Queue
 , condPush, condPop) where
 
 import Control.Monad
+import Util
 
 import Circuit.Gcil.Compiler as Gc
 import Debug.Trace
@@ -62,10 +63,6 @@ fromList (x1:x2:l)
                               }
   parentList [] = Nothing
   parentList l = Just $ fromList $ pairUp l
-
-pairUp [] = []
-pairUp (a:b:l) = (a,b):pairUp l
-pairUp [_]= undefined
 
 
 

@@ -50,6 +50,10 @@ splitOddEven [] = ([],[])
 splitOddEven [x] = ([x],[])
 splitOddEven (x:y:l) = (x:xs,y:ys) where (xs,ys) = splitOddEven l
 
+pairUp [] = []
+pairUp (a:b:l) = (a,b):pairUp l
+pairUp [_]= undefined
+
 inversePermute l = A.elems inv where
   n = length l
   inv = A.array (0,n-1) $ map (\i -> (arr ! i,i)) [0..n-1]

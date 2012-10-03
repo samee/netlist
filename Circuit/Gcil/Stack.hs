@@ -1,7 +1,7 @@
 module Circuit.Gcil.Stack
 ( Stack
 , empty
---, fromList
+, fromList
 , capLength
 , top
 , Circuit.Gcil.Stack.null
@@ -11,6 +11,7 @@ module Circuit.Gcil.Stack
 
 import Control.Monad
 import Circuit.Gcil.Compiler as Gc
+import Util
 
 data Stack a = Stack { buffer :: [GblMaybe a]
                      , headPtr :: GblInt
@@ -30,6 +31,30 @@ empty = Stack { buffer = replicate buffsize Gc.gblNoth
               , popAdjusted = True
               , maxLength = maxBound
               }
+
+-- Just a Stack prefilled with the input elements. The elements will get popped
+-- out the order they appear in the list (as if they were pushed in in the 
+-- reverse order)
+fromList :: [a] -> Stack a
+fromList [] = empty
+fromList [x] = empty { buffer = [Gc.gblNoth,Gc.gblNoth,Gc.gblJust x
+                                ,Gc.gblNoth,Gc.gblNoth]
+                     , headPtr = constArg ptrWidth 3
+                     , pushAdjusted = False
+                     }
+fromList [x,y] = empty { buffer = [Gc.gblJust y,Gc.gblJust x,Gc.gblNoth
+                                  ,Gc.gblNoth,Gc.gblNoth]
+                       , headPtr = constArg ptrWidth 2
+                       }
+fromList [x,y,z]  = empty { buffer =  [Gc.gblJust z,Gc.gblJust y,Gc.gblJust x
+                                      ,Gc.gblNoth,Gc.gblNoth]
+                          , headPtr = constArg ptrWidth 3
+                          , pushAdjusted = False
+                          }
+fromList l = (fromList $ take hs l) { 
+                parent = Just $ fromList $ pairUp $ drop hs l 
+                } where hs = if odd $ length l then 3 else 2
+
 
 -- I know top will never be in the last slot (ensured by pushAdjust)
 top stk = muxListOffset 1 (headPtr stk) (init $ buffer stk)

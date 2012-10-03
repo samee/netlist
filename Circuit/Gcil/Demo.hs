@@ -70,3 +70,21 @@ wideAngleNaive theta maxTheta = join $ fold1M (liftM2 Gc.max) l
   allPair = [(a,b) | (a,bs) <- zip theta (tail $ tails theta), b <- bs]
   l = map (uncurry $ modDiff maxTheta) allPair
 
+-- TODO stack needs condModifyTop
+{-
+Stack of (height,startx) pair
+
+Add zeroes to both sides
+
+if top shorterThan current, push (current.x,current.h), i++
+if top sameHeightAs current, i++
+if top tallerThan current, updateWith (current.x-top.x)*top.h, pop
+rectangleInHistogram heights = do
+  (best,_,_) <- foldM (\(best,heightsLeft,ascStack) i -> do
+    mbtop <- Gs.top ascStack
+    if knownNothing mbtop then return (best,heightsLeft,ascStack)
+    else do 
+    ) ((constArg resultWidth 0),heightsLeft,Gs.fromList (constArg 1 0)) [1..n]
+  return best
+
+  -}
