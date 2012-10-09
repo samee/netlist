@@ -11,6 +11,7 @@ module Circuit.Gcil.Stack
 
 import Control.Monad
 import Circuit.Gcil.Compiler as Gc
+import Data.Tuple
 import Util
 
 data Stack a = Stack { buffer :: [GblMaybe a]
@@ -52,7 +53,7 @@ fromList [x,y,z]  = empty { buffer =  [Gc.gblJust z,Gc.gblJust y,Gc.gblJust x
                           , pushAdjusted = False
                           }
 fromList l = (fromList $ take hs l) { 
-                parent = Just $ fromList $ pairUp $ drop hs l 
+                parent = Just $ fromList $ map swap $ pairUp $ drop hs l 
                 } where hs = if odd $ length l then 3 else 2
 
 

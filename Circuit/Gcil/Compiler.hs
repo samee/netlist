@@ -70,11 +70,19 @@ instance Garbled GblInt where
   bitWidth = gblWidth
   bitify x = return x
   unbitify _ x = return x
+  -- XXX this will come back to bite me. Separate bitbundle and int later
+  equalSize x y | xw > yw = do y' <- zextend xw y; return (x,y')
+                | xw < yw = do x' <- zextend yw x; return (x',y)
+                | otherwise = return (x,y)
+                where xw = gblWidth x
+                      yw = gblWidth y
+  {-
   -- I expect users to use zextend or sextend as needed
   equalSize x y | gblWidth x /= gblWidth y = error $ "GblInt sizes differ " ++
                                               (show $ gblWidth x) ++ " " ++
                                               (show $ gblWidth y)
                 | otherwise = return (x,y)
+                -}
 
 instance (Garbled a, Garbled b) => Garbled (a,b) where
   bitWidth (a,b) = bitWidth a + bitWidth b
@@ -102,7 +110,7 @@ instance (Garbled a, Garbled b, Garbled c) => Garbled (a,b,c) where
                                         return ((a1,b1,c1),(a2,b2,c2))
 
 -- Here Nothing means known to be Nothing, but Just means could be either
--- greaterByBits will compare Nothing to be smaller UNTESTED
+-- greaterByBits will compare Nothing to be smaller
 data GblMaybe a = GblMaybe GblBool (Maybe a)
 
 instance Garbled a => Garbled (GblMaybe a) where
@@ -286,6 +294,10 @@ unconcat ls a | lensum > gblWidth a = undefined "unconcat lengths out of range"
 
 addSubCost a b = andsUsed $ P.max (gblWidth a) (gblWidth b)
 
+addU a b = do addSubCost a b; fixWidthU "add" id a b
+addS a b = do addSubCost a b; fixWidthS "add" id a b
+{-
+-- THIS IS A LIE!!
 -- addU may overflow, addWithCarryU won't but produces results a bit wider
 addU a b = do r <- addWithCarryU a b
               trunc (gblWidth r - 1) r
@@ -293,6 +305,7 @@ addU a b = do r <- addWithCarryU a b
 addS a b = do addSubCost a b
               r <- fixWidthS "add" (+1) a b
               trunc (gblWidth r - 1) r
+              -}
 
 -- Assumes a>=b. Unnecessarily uses an extra AND gate
 subU a b = do addSubCost a b; fixWidthU "sub" id a b
@@ -301,7 +314,7 @@ subU a b = do addSubCost a b; fixWidthU "sub" id a b
 condAddS c a b = do d <- ifThenElse c b $ constArg (gblWidth b) 0
                     addS a d
 
-addWithCarryU a b = do addSubCost a b; fixWidthU "add" (+1) a b
+--addWithCarryU a b = do addSubCost a b; fixWidthU "add" (+1) a b
 
 ----------------------- Compares and swaps --------------------------------
 

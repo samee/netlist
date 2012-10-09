@@ -2,9 +2,12 @@ module Circuit.Gcil.Demo where
 
 import Control.Monad
 import Data.List
+import Debug.Trace
 
 import Circuit.Gcil.Compiler as Gc
 import Circuit.Gcil.Queue as Gq
+import Circuit.Gcil.Stack as Gs
+import Util
 
 
 -- Given a set of points on the circumference of a circle,
@@ -64,12 +67,30 @@ modDiff m a b = do
 
 fold1M f l = foldM f (head l) (tail l)
 
+foldMWithBreak :: Monad m => (a -> b -> m (Maybe a)) -> a -> [b] -> m a
+foldMWithBreak f init [] = return init
+foldMWithBreak f init (h:t) = do mb <- f init h
+                                 case mb of Nothing -> return init
+                                            Just x  -> foldMWithBreak f x t
+
 -- Naive O(n^2) comparison
 wideAngleNaive theta maxTheta = join $ fold1M (liftM2 Gc.max) l
   where
   allPair = [(a,b) | (a,bs) <- zip theta (tail $ tails theta), b <- bs]
   l = map (uncurry $ modDiff maxTheta) allPair
 
+shiftLeft amt x = Gc.concat [x,(constArg amt 0)]
+
+multiply a b = aux b where
+  addop bt = Gc.bitwiseAnd a =<< Gc.sextend awidth (bitToInt bt)
+  awidth = gblWidth a
+  aux b = if bwidth == 1 then addop (intToBit b)
+                         else do (bt,b') <- splitMsb b
+                                 s <- leadz =<< multiply a b'
+                                 addU s =<< shiftLeft (bwidth-1) =<< addop bt
+        where bwidth = gblWidth b
+              leadz x = zextend (gblWidth x + 1) x
+                             
 -- TODO stack needs condModifyTop
 {-
 Stack of (height,startx) pair
@@ -79,12 +100,42 @@ Add zeroes to both sides
 if top shorterThan current, push (current.x,current.h), i++
 if top sameHeightAs current, i++
 if top tallerThan current, updateWith (current.x-top.x)*top.h, pop
-rectangleInHistogram heights = do
-  (best,_,_) <- foldM (\(best,heightsLeft,ascStack) i -> do
-    mbtop <- Gs.top ascStack
-    if knownNothing mbtop then return (best,heightsLeft,ascStack)
-    else do 
-    ) ((constArg resultWidth 0),heightsLeft,Gs.fromList (constArg 1 0)) [1..n]
-  return best
-
   -}
+rectangleInHistogram heights = do
+  (best,_,_,_) <- foldMWithBreak (\(best,heightsLeft,ascStack,nxLeftEnd) _ -> do
+    mbcur <- Gs.top heightsLeft
+    if knownNothing mbcur then return Nothing
+    else liftM Just $ do
+      mbright <- Gs.top heightsLeft
+      let (rightEnd,rightH) = castFromJust mbright
+      notDone <- Gc.not =<< gblIsNothing mbright
+      (leftEnd,leftH) <- liftM castFromJust $ Gs.top ascStack
+      shortCase <- greaterThanU rightH leftH
+      tallCase  <- greaterThanU leftH rightH
+      heightsLeft <- flip Gs.condPop heightsLeft =<< Gc.not tallCase
+      pushC <- Gc.and shortCase notDone
+      ascStack <- Gs.condPush pushC (nxLeftEnd,rightH) ascStack
+      xdiff <- subU rightEnd leftEnd
+      candidate <- multiply leftH xdiff
+      better  <- Gc.greaterThanU candidate best
+      updateC <- Gc.andList [tallCase,notDone,better]
+      best    <- Gc.mux updateC best =<< zextend resultWidth candidate
+      --nxLeftEnd <- Gc.mux pushC nxLeftEnd =<< Gc.addU const1 rightEnd
+      --nxLeftEnd <- Gc.mux tallCase nxLeftEnd leftEnd
+      nxLeftEnd'<- Gc.addU const1 rightEnd
+      nxLeftEnd <- Gc.mux tallCase nxLeftEnd' leftEnd
+      ascStack <- Gs.condPop tallCase ascStack
+      --newOutput $ bitToInt pushC
+      return (best,heightsLeft,ascStack,nxLeftEnd)
+    ) (resultInit,Gs.fromList heightsLeft,Gs.fromList [(constArg xw 0,const0)]
+      ,constArg xw 1) 
+    [1..2*n]
+  return best
+  where
+  n = length heights
+  xw = valueSize (n+1)
+  heightsLeft = zip (map (constArg xw) [1..]) $ heights++[const0]
+  resultWidth = xw+maximum (map gblWidth heights)
+  const1 = constArg 1 1
+  const0 = constArg 1 0
+  resultInit = constArg resultWidth 0

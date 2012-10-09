@@ -30,20 +30,13 @@ wideAngleCase algo theta thMax expected = do
 
   where thetaWidth = valueSize thMax
       
-
 burnWideAngleTest theta thMax expected = do
   writeTestCase "wideAngleTest" 
     (wideAngleCase Demo.wideAngle theta thMax expected) fst snd
   writeTestCase "wideAngleNaiveTest" 
     (wideAngleCase Demo.wideAngleNaive theta thMax expected) fst snd
 
-naiveCost thMax n = fcost + maxcost where
-  fcost = 4*w*fcount -- 2 subtractions and a min operation
-  maxcost = (fcount-1)*2*w
-  fcount = (n*(n-1)) `div` 2
-  w = valueSize thMax
-
-runTests = forM_ ns $ \n -> do
+runWideAngleTests = forM_ ns $ \n -> do
              putStrLn $ "Case n = "++show n
              (l,expected) <- getStdRandom (randomWideAngleTest thMax n)
              burnWideAngleTest l thMax expected
@@ -52,3 +45,40 @@ runTests = forM_ ns $ \n -> do
   where
   thMax = 256
   ns = [128, 256, 512, 1024, 2048]
+
+naiveCost thMax n = fcost + maxcost where
+  fcost = 4*w*fcount -- 2 subtractions and a min operation
+  maxcost = (fcount-1)*2*w
+  fcount = (n*(n-1)) `div` 2
+  w = valueSize thMax
+
+localRectangleInHistogram l = maximum [h*w | prefix <- init $ tails l,
+    (h,w) <- scanl heightScanner (0,maxBound) prefix]  where
+  heightScanner (i,h) h2 = (i+1, Prelude.min h h2)
+
+randomRectangleInHistogram n hmax rgen = flip runState rgen $ do
+  l <- replicateM n $ state $ randomR (0,hmax)
+  return (l,localRectangleInHistogram l)
+
+rectangleInHistogramCase hs hwidth expected = do
+  hVars <- replicateM (length hs) (newInput hwidth 1)
+  expectedVar <- newInput resultWidth 2
+  result <- rectangleInHistogram hVars
+  eq <- ignoreAndsUsed $ equalU expectedVar result
+  newOutput (bitToInt eq)
+  return  ( [(gblName expectedVar, expected)]
+          , zip (map gblName $ hVars) hs)
+
+  where resultWidth = valueSize (length hs) + hwidth
+
+
+burnRectangleInHistogramCase hs hwidth expected =
+  writeTestCase "rectangleInHistogram"
+    (rectangleInHistogramCase hs hwidth expected) fst snd
+
+runRectangleInHistogramTests = do
+  (hs,exp) <- getStdRandom (randomRectangleInHistogram 200 255)
+  burnRectangleInHistogramCase hs 8 exp
+
+runTests = do runWideAngleTests
+              runRectangleInHistogramTests
