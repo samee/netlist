@@ -18,7 +18,10 @@ module Circuit.NetList
 , sub
 , equal
 , condAdd
+, condSub
+, shiftLeft
 , NetOrd (chainGreaterThan, greaterThan)
+, lessThan
 , NetUInt
 , NetSInt
 , NetBits(..), BitSym(..)
@@ -92,6 +95,7 @@ Remove/rename Gcil.Compiler. Bye bye!
 
 import Control.Monad.State.Strict
 import Control.Monad.Writer
+import Data.Bits
 import Data.Tuple
 
 import Util
@@ -160,6 +164,9 @@ class NetOrd a where
 
   greaterThan = chainGreaterThan netFalse
 
+lessThan :: NetOrd a => a -> a -> NetWriter NetBool
+lessThan = flip greaterThan
+
 newtype NetUInt = NetUInt { uIntBits :: NetBits }
 newtype NetSInt = NetSInt { sIntBits :: NetBits }
 
@@ -215,9 +222,11 @@ add a b = emitIntOp BitAdd a b
 sub a b = emitIntOp BitSub a b
 equal a b = emitIntOp BitEq a b >>= bitify >>= lsb
 
-condAdd c a b = do cz <- bitRepeat (intWidth b) c
-                   bz <- bitify b
-                   add a =<< intFromBits =<< bitwiseAnd bz cz
+condAdd c a b = add a =<< mux c (constInt 0) b
+condSub c a b = sub a =<< mux c (constInt 0) b
+
+shiftLeft amt x = do z <- bitify x
+                     liftM intFromBits $ bitConcat [z,constBits amt 0]
 
 fixWidth :: NetInt a => a -> a -> NetWriter (a,a)
 fixWidth a b | aw > bw = do b' <- extend aw b; return (a,b')
@@ -262,15 +271,26 @@ resultWidth op | singleBitOutput op = 1
 argWidth (BinOp _ x _) = bitWidth x
 argWidth (UnOp _ x) = bitWidth x
 
-checkWidth f a b | bitWidth a == bitWidth b = emit (BinOp f a b)
-                 | otherwise = undefined
+checkWidth f a b | bitWidth a /= bitWidth b = undefined
+                 | knownConst a && knownConst b 
+                    = return $ a { bitValues = ConstMask $ constBinOp f a b }
+                 | otherwise =  emit (BinOp f a b)
+
+-- These two functions do evil casting, used only from checkWidth
+constBinOp op av bv = case op of BitAnd -> a .&. b
+                                 BitOr  -> a .|. b
+                                 BitXor -> xor a b
+  where a = castFromConst av
+        b = castFromConst bv
+
+castFromConst (NetBits { bitValues = ConstMask x }) = x
 
 muxBits :: NetBool -> NetBits -> NetBits -> NetWriter NetBits
 muxBits c a b = do x <- bitwiseXor a b
                    cx <- bitRepeat (bitWidth a) c
                    bitwiseXor a =<< bitwiseAnd cx x
 
-newOutput a = tell $ OutputBits a
+newOutput a = tell [OutputBits a]
 
 lsb a | bitWidth a == 1 = return . NetBool . bitValues $ a
       | otherwise       = liftM (NetBool . bitValues) $ bitSelect 0 1 a
@@ -291,7 +311,7 @@ instance BitBunch NetUInt where bitify = return . uIntBits
 instance BitBunch NetSInt where bitify = return . sIntBits
 instance BitBunch NetBool where bitify = return . NetBits 1 . boolValue
 
-bitwiseNot = emit . UnOp BitNot 
+bitwiseNot = emit . UnOp BitNot
 bitwiseAnd = checkWidth BitAnd
 bitwiseOr  = checkWidth BitOr
 bitwiseXor = checkWidth BitXor
@@ -313,10 +333,15 @@ scanSum l = aux l 0 where
   aux [] init = [init]
   aux (l:ls) init = init : (aux ls $! (l+init))
 
-zextendBits w a | w > bitWidth a = emit (ExtendOp ZeroExtend w a)
-                | otherwise = return a
-sextendBits w a | w > bitWidth a =  emit (ExtendOp SignExtend w a)
-                | otherwise = return a
+knownConst (NetBits { bitValues = ConstMask _ }) = True
+knownConst _ = False
+
+zextendBits w a | w <= bitWidth a = return a
+                | knownConst a = return $ a {bitWidth = w}
+                | otherwise = emit $ ExtendOp ZeroExtend w a
+sextendBits w a | w <= bitWidth a = return a
+                | knownConst a = return $ a {bitWidth = w}
+                | otherwise = emit $ ExtendOp SignExtend w a
 bitwiseGreater a b = checkWidth BitGt
 bitwiseEqual a b = checkWidth BitEq
 

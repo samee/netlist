@@ -43,14 +43,16 @@
 --                 -- no more new variable declarations below this
 --                 outputs <- liftNet $ awesomeCircuit v v2
 --                 eq <- ignoreAndsUsed $ liftNet $ checkCircuit outputs
---                 liftNet $ newOutput $ bitify eq
+--                 liftNet $ newOutput =<< bitify eq
 -- 
 -- gcilShow for output has to be shelved for now. Some other day
 
 module Circuit.NetList.Gcil
 ( gcilList
+, InputParty(..)
 , testInt
 , liftNet
+, gcilOutBits
 , ignoreAndsUsed
 , burnTestCase
 ) where
@@ -84,15 +86,18 @@ burnTestCase caseName bytecode = do
         writeInSpec cktFile input
       CalcInstr netinstr -> do compileNetInstr cktFile netinstr
                                c <- readIORef counting
-                               when c $ modifyIORef andCount (+1)
+                               when c $ 
+                                 modifyIORef' andCount (+ andCost netinstr)
       StartIgnoreStats   -> writeIORef counting False
       EndIgnoreStats     -> writeIORef counting True
   ac <- readIORef andCount
-  putStrLn $ show caseName ++ " " ++ show ac
+  putStrLn $ caseName ++ " " ++ show ac
 
 type GcilMonad = WriterT [GcilInstr] (State Int)
 gcilList :: GcilMonad a -> [GcilInstr]
 gcilList ckt = evalState (execWriterT ckt) 1
+
+gcilOutBits x = liftNet $ newOutput =<< bitify x
 
 gcilTestInput party width value = do id <- lift $ state (\id -> (id,id+1))
                                      let l = InputSpec party width id value
@@ -115,11 +120,25 @@ liftNet nw = do initId <- lift get
                     endId <- nextBitId
                     return (r,endId)
 
-ignoreAndsUsed mr = do tell StartIgnoreStats
+ignoreAndsUsed mr = do tell [StartIgnoreStats]
                        r <- mr
-                       tell EndIgnoreStats
+                       tell [EndIgnoreStats]
                        return r
 
+andCost (OutputBits _) = 0
+andCost (AssignResult _ op) = opcodeAndCost op
+
+-- Add, Sub and Neg should be a gate cheaper, but currently isn't
+opcodeAndCost (BinOp BitXor _ _) = 0
+opcodeAndCost (BinOp BitEq x _) = bitWidth x - 1
+opcodeAndCost (BinOp _ x _) = bitWidth x
+opcodeAndCost (UnOp BitNeg x) = bitWidth x
+opcodeAndCost (UnOp BitAny x) = bitWidth x - 1
+opcodeAndCost (UnOp BitParityOdd _) = 0
+opcodeAndCost (UnOp BitNot _) = 0
+opcodeAndCost (ConcatOp _) = 0
+opcodeAndCost (SelectOp _ _ _) = 0
+opcodeAndCost (ExtendOp _ _ _) = 0
 
 idName v = 't':show v
 inName = idName.varId
@@ -135,7 +154,7 @@ writeInSpec cktfile v = hPutStrLn cktfile
 compileNetInstr h instr = hPutStrLn h $ stringOfNetInstr instr
 vstr (NetBits w (ConstMask v)) = show v++":"++show w
 vstr (NetBits w (VarId id)) = idName id
-stringOfNetInstr (AssignResult v opcode) = vstr v++stringOfOpcode opcode
+stringOfNetInstr (AssignResult v opcode) = vstr v++" "++stringOfOpcode opcode
 stringOfNetInstr (OutputBits v) = ".output "++vstr v
 stringOfOpcode (BinOp bop u v) = opline (bopStr bop) [u,v]
 stringOfOpcode (UnOp uop v) = opline (uopStr uop) [v]
@@ -143,7 +162,7 @@ stringOfOpcode (ConcatOp l) = opline "concat" l
 stringOfOpcode (SelectOp st en v)
   | st == 0   = unwords ["trunc",show en,vstr v]
   | otherwise = unwords ["select",show st,show en,vstr v]
-stringOfOpcode (ExtendOp ext w v) = unwords [exts,show w,vstr v]
+stringOfOpcode (ExtendOp ext w v) = unwords [exts,vstr v,show w]
   where exts = case ext of ZeroExtend -> "zextend"; SignExtend -> "sextend"
 
 opline op l = unwords $ op:map vstr l
@@ -168,3 +187,12 @@ writeCaseFiles caseName f =
       withSuff "-client.in" $ \clin -> f cktf serin clin
   where
   withSuff suff = withFile (destPath++caseName++suff) WriteMode
+
+
+-- Should be removed after I update my base libraries/ghc
+-- |Strict version of 'modifyIORef'
+modifyIORef' :: IORef a -> (a -> a) -> IO ()
+modifyIORef' ref f = do
+    x <- readIORef ref
+    let x' = f x
+    x' `seq` writeIORef ref x'
