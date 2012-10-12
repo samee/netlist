@@ -120,12 +120,9 @@ rectangleInHistogram heights = do
       better  <- Gc.greaterThanU candidate best
       updateC <- Gc.andList [tallCase,notDone,better]
       best    <- Gc.mux updateC best =<< zextend resultWidth candidate
-      --nxLeftEnd <- Gc.mux pushC nxLeftEnd =<< Gc.addU const1 rightEnd
-      --nxLeftEnd <- Gc.mux tallCase nxLeftEnd leftEnd
       nxLeftEnd'<- Gc.addU const1 rightEnd
       nxLeftEnd <- Gc.mux tallCase nxLeftEnd' leftEnd
       ascStack <- Gs.condPop tallCase ascStack
-      --newOutput $ bitToInt pushC
       return (best,heightsLeft,ascStack,nxLeftEnd)
     ) (resultInit,Gs.fromList heightsLeft,Gs.fromList [(constArg xw 0,const0)]
       ,constArg xw 1) 

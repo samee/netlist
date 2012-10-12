@@ -10,6 +10,12 @@ import Data.STRef
 import Debug.Trace
 import System.Random
 
+bind :: Monad m => (a -> m b) -> m a -> m b
+bind = (=<<)
+bind2 f a b = join $ liftM2 f a b
+bind3 f a b c = join $ liftM3 f a b c
+joinAp f ma = do a <- ma; f a
+
 mapAccumM :: Monad m => (c -> a -> m (c,b)) -> c -> [a] -> m (c,[b])
 mapAccumM f init xs = do
   (acc,rev) <- foldM (\(acc,ys) x -> do
