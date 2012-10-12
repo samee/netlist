@@ -268,7 +268,9 @@ bitwiseNot a   = calculate  "not" (gblWidth a) [gblName a]
 bitwiseAnd a b = do andsUsed (gblWidth a); rigidWidth "and" a b
 bitwiseXor a b = rigidWidth "xor" a b
 select st en a = calculate "select" (en-st) [gblName a, show st, show en]
-trunc sz a = calculate "trunc" sz [gblName a, show sz] -- select 0 sz a
+trunc sz a = if sz < gblWidth a 
+                then calculate "trunc" sz [gblName a, show sz] -- select 0 sz a
+                else return a
 concat as = calculate "concat" wsum (map gblName as) 
   where wsum = sum $ map gblWidth as
 unconcat ls a | lensum > gblWidth a = undefined "unconcat lengths out of range"
