@@ -10,6 +10,8 @@ if [[ $1 == "-s" ]] ; then
   TARGET=FindOptimal
 elif [[ $1 == "-t" ]] ; then
   TARGET=SorterTests
+elif [[ $1 == "-f" ]] ; then
+  TARGET=FormatDimacs
 else
   TARGET=TestCircuits
 fi

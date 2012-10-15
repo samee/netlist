@@ -1,4 +1,5 @@
 FindOptimal
+FormatDimacs
 SorterTests
 TestCircuits
 bin/

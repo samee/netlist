@@ -1,0 +1,8 @@
+-- Using the same pattern as Circuit.NetList.Gcil, I want this:
+-- dimacsList $ do v <- newInt width
+--                 v2 <- newInt width2
+--                 outputs <- liftNet $ awesomeCircuit v v2
+--                 assert =<< f output -- assertEq is good enough for cycles
+--                 dimacsShow $ "hello world: "++show outputs
+--
+-- dimacsShow works with FormatDimacs
