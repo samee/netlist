@@ -99,7 +99,7 @@ gcilList ckt = evalState (execWriterT ckt) 1
 
 gcilOutBits x = liftNet $ newOutput =<< bitify x
 
-gcilTestInput party width value = do id <- lift $ state (\id -> (id,id+1))
+gcilTestInput party width value = do id <- state (\id -> (id,id+1))
                                      let l = InputSpec party width id value
                                      tell [InputInstr l]
                                      return l
@@ -113,7 +113,7 @@ testInt party width value
 liftNet :: NetWriter a -> GcilMonad a
 liftNet nw = do initId <- lift get
                 let ((result,endId),nl) = netList addend initId
-                lift $ put endId
+                put endId
                 tell $ map CalcInstr nl
                 return result
   where addend = do r <- nw

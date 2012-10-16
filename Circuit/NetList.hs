@@ -245,10 +245,10 @@ constBits w v = NetBits w (ConstMask v)
 conjureBits w id = NetBits { bitWidth = w, bitValues = VarId id }
 
 nextBitId :: NetWriter Int
-nextBitId = lift $ gets nextSym
+nextBitId = gets nextSym
 
 newBits :: Int -> NetWriter NetBits
-newBits w = do id <- lift $ state $ \(NetState id) -> (id,NetState $ id+1)
+newBits w = do id <- state $ \(NetState id) -> (id,NetState $ id+1)
                return $ conjureBits w id
 
 singleBitOutput (BinOp BitEq _ _) = True
