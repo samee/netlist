@@ -15,18 +15,16 @@ signOrInt '+' = True
 signOrInt '-' = True
 signOrInt c = isDigit c
 
-(><) = liftM2 (++)
+greedyOption def = (<++ return def)
 
 -- Assuming it is a SAT instance and we have vmap
 -- Most significant bit indices come first
 formatSat :: (Int -> Bool) -> ReadP String
-formatSat vmap = liftM concat $ liftM2 (:) firstLiteral 
-                              $ manyTill (literal +++ macro) eof where
-  firstLiteral = munch (/='$')
-  literal = munch isSpace >< munch1 (\c -> c/='$'&&c/='[') >< munch (/='$')
+formatSat vmap = liftM concat $ manyTill (macro <++ literal) eof where
+  literal = munch (/='$')
   macro = do char '$'
              header <- munch1 isAlpha
-             inds <- option [] $ between (nows '[') (nows ']') 
+             inds <- greedyOption [] $ between (nows '[') (nows ']') 
                      $ sepBy bitind (munch1 isSpace)
              return $ processMacro vmap (map toLower header) inds
   nows c = skipSpaces >> char c
