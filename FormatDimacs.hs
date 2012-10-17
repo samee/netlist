@@ -53,16 +53,18 @@ toUInt vmap inds = foldl' (\v i -> 2*v+imap i) 0 inds
 toSInt vmap inds = offset + toUInt vmap (tail inds) where
   offset = if toBool vmap (head inds) then -(2^(length inds-1)) else 0
 
-formatMain solverOut tmpl | status == "UNSAT" = "UNSAT\n"
-                          | status == "SAT"   = "SAT\n"++formatted
+formatMain solverOut tmpl | status == unsat = unsat++"\n"
+                          | status == sat   = sat++"\n"++formatted
                           | otherwise = "Neither SAT nor UNSAT"
   where
   formatted = fst $ head $ readP_to_S (formatSat vmWrap) tmpl
-  outWords = words solverOut
+  outWords = tail $ words solverOut
   status = head outWords
-  vmap = M.fromList [(i,b) | tok <- map read $ tail outWords
-                           , let i = abs tok; b = tok>0]
+  vmap = M.fromList [(i,b) | tok <- drop 2 outWords, tok /= "v"
+                           , let v = read tok; i = abs v; b = v>0]
   vmWrap = (vmap M.!)
+  sat = "SATISFIABLE"
+  unsat = "UNSATISFIABLE"
 
 {- target for now:
 for(i=j=0;j<n;++i) {
