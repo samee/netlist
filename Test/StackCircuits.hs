@@ -4,11 +4,12 @@ import Control.Monad
 import Control.Monad.State
 import System.Random
 
-import Circuit.Gcil.Compiler as Gc
-import Circuit.Gcil.Stack as Gs
+import Circuit.NetList as N
+import Circuit.NetList.Gcil as NG
+import qualified Circuit.Stack as S
 import Test.Gcil
 
-intWidth = 8
+itemWidth = 8
 expn = 100
 maxn = 2*expn
 
@@ -32,43 +33,36 @@ randomTest rgen = aux opcount 0 [] rgen where
       ops <- state $ aux (opcount-opc) (len-opc) stk'
       return $ map StackPop exp ++ ops
 
-  vrange = (0,2^intWidth-1)
+  vrange = (0,2^itemWidth-1)
   opcount = 20*expn
-
--- XXX so batch arrays can actually use data interactively, we just cannot
---   use read out data to calculate addresses. But could we put data on stack
---   and pop it out as an address? We could, couldn't we?
 
 splitPushPop [] = ([],[])
 splitPushPop (StackPush x:l) = (x:a,b) where (a,b) = splitPushPop l
 splitPushPop (StackPop  x:l) = (a,x:b) where (a,b) = splitPushPop l
 
-burnRandomTest acts = writeTestCase "stacktest" ckt fst snd
-  where 
-  ckt = do
-    pushVars <- replicateM pushC $ newInput intWidth 2
-    popVars <- replicateM popC $ newInput intWidth 1
-    cktMain pushVars popVars acts bitOne (Gs.capLength maxn Gs.empty)
-    return (zip (map gblName pushVars) pushVals, 
-            zip (map gblName  popVars) popVals)
-
+-- name == "stacktest" TODO runTests
+gcRandomTest acts = do
+  pushVars <- mapM (testInt ServerSide itemWidth) pushVals
+  popVars  <- mapM (testInt ClientSide itemWidth) popVals
+  cktMain pushVars popVars acts netTrue (S.capLength maxn S.empty)
+  where
   (pushVals, popVals) = splitPushPop acts
   pushC = length pushVals
   popC = length popVals
 
-  cktMain :: [GblInt] -> [GblInt] -> [StackTestAction] 
-          -> GblBool -> Stack GblInt -> GcilMonad ()
-  cktMain [] [] [] c stk = newOutput (bitToInt c)
+  cktMain :: [NetUInt] -> [NetUInt] -> [StackTestAction] 
+          -> NetBool -> S.Stack NetUInt -> GcilMonad ()
+  cktMain [] [] [] c stk = gcilOutBits c
   cktMain (var:push) pop (StackPush _:acts) c stk = do
-    stk <- Gs.condPush Gc.bitOne var stk
+    stk <- liftNet $ S.condPush N.netTrue var stk
     cktMain push pop acts c stk
   cktMain push (exp:pop) (StackPop _:acts) c stk = do
-    mb  <- Gs.top stk
-    stk <- Gs.condPop Gc.bitOne stk
-    c   <- ignoreAndsUsed $ do
-              valid <- Gc.not =<< gblIsNothing mb
-              eq    <- equalU (castFromJust mb) exp
-              Gc.andList [c,valid,eq]
+    mb  <- liftNet $ S.top stk
+    stk <- liftNet $ S.condPop N.netTrue stk
+    c   <- ignoreAndsUsed $ liftNet $ do
+              valid <- netNot =<< netIsNothing mb
+              eq    <- equal (netFromJust mb) exp
+              netAnds [c,valid,eq]
     cktMain push pop acts c stk
 
 
@@ -80,6 +74,5 @@ testRandomTest acts = aux [] acts where
   aux stk (StackPush x:acts) = aux (x:stk) acts
 
 runTests :: IO ()
-runTests = do -- setStdGen $ mkStdGen 1
-              acts <- getStdRandom randomTest
-              burnRandomTest acts
+runTests = do acts <- getStdRandom randomTest
+              burnTestCase "stacktest" $ gcilList $ gcRandomTest acts

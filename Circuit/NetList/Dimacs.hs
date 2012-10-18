@@ -10,8 +10,9 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 module Circuit.NetList.Dimacs
-( freshInt, freshBool
+( freshInt, freshBool, freshBits
 , liftNet
+, DmMonad
 , dimacsList
 , dmAssert
 , (-|-)
@@ -24,6 +25,7 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Writer
 import Control.Monad.State.Strict
+import Data.Bits
 import qualified Data.HashTable as Ht
 import Data.Maybe
 import System.IO
@@ -90,7 +92,7 @@ bitList (NetBits {bitValues = ConstMask x, bitWidth = w})
 
 bitsOfInt 0 0 = []
 bitsOfInt 0 _ = error "width parameter too small"
-bitsOfInt w x = odd x : bitsOfInt (w-1) (x `div` 2)
+bitsOfInt w x = map (\i -> testBit x i) [0..w-1]
 
 dmBitify x = bitList =<< liftNet (bitify x)
 
@@ -139,6 +141,7 @@ instance DmShow NetUInt where dmShow = (:[]).UIntTok
 instance DmShow NetSInt where dmShow = (:[]).SIntTok
 instance DmShow NetBool where dmShow = (:[]).BoolTok
 
+infixr 4 -|-
 a -|- b = dmShow a ++ dmShow b
 
 -- Okay, so it accepts more than just strings, so what?
@@ -202,9 +205,9 @@ compileNetInstr (AssignResult res op) = reindexBits res =<< compileOp op
 compileNetInstr (OutputBits x) = dmPutStrLn (intFromBits x :: NetUInt)
 
 compileOp (ConcatOp l) =
-  liftM (reverse.concat) $ mapM (liftM reverse.bitList) l
+  liftM (concat.reverse) $ mapM bitList l
 compileOp (SelectOp st en x) =
-  liftM (reverse.take (en-st).drop st.reverse) $ bitList x
+  liftM (take (en-st).drop st) $ bitList x
 compileOp (ExtendOp SignExtend w x) = do
   l <- bitList x
   return $ l ++ replicate (w-length l) (last l)

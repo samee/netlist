@@ -10,6 +10,6 @@ dmTheOp res = do
           y <- theOp x
           equal y (constInt res)
   dmAssert eq
-  dmPutStrLn $ "theOp "-|-x-|-(" = "++show res)
+  dmPutStrLn $ "theOp "-|-x-|-" = "++show res
 
 runTests = burnSatQuery "inaneCase" =<< dimacsList (dmTheOp 8)

@@ -13,7 +13,7 @@ module Circuit.NetList
 , netNot
 , netAnds
 , netXors
-, NetInt (extend,constInt,intFromBits,intWidth)
+, NetInt (extend,constInt,constIntW,intFromBits,intWidth)
 , add
 , sub
 , equal
@@ -52,11 +52,13 @@ module Circuit.NetList
 , bitwiseEqual
 , Swappable(condSwap,mux)
 , ifThenElse
+, zipMux
 , muxList
 , muxListOffset
 , decoder
 , decoderEn
 , decoderREn
+, NetMaybe
 , netNoth
 , netJust
 , netMaybe
@@ -157,6 +159,7 @@ netXors (x1:x2:xs) = netXor x1 x2 >>= netXors.(:xs)
 class (Swappable a,BitBunch a) => NetInt a where
   extend :: Int -> a -> NetWriter a
   constInt :: Int -> a
+  constIntW :: Int -> Int -> a
   intFromBits :: NetBits -> a
   intWidth :: a -> Int
 
@@ -176,6 +179,7 @@ newtype NetSInt = NetSInt { sIntBits :: NetBits }
 
 instance NetInt NetUInt where
   extend w a = liftM NetUInt $ zextendBits w (uIntBits a)
+  constIntW w x = NetUInt $ NetBits { bitWidth = w, bitValues = ConstMask x }
   constInt x = NetUInt $ NetBits  { bitWidth = valueSize x
                                   , bitValues = ConstMask x }
   intFromBits = NetUInt
@@ -183,6 +187,7 @@ instance NetInt NetUInt where
 
 instance NetInt NetSInt where
   extend w a = liftM NetSInt $ sextendBits w (sIntBits a)
+  constIntW w x = NetSInt $ NetBits { bitWidth = w, bitValues = ConstMask x }
   constInt x = NetSInt $ NetBits  { bitWidth = 1 + valueSize (abs x)
                                   , bitValues = ConstMask x }
   intFromBits = NetSInt
@@ -242,7 +247,7 @@ data NetBits = NetBits  { bitWidth :: Int
                         , bitValues :: BitSym
                         }
 
-data BitSym = ConstMask Int | VarId Int
+data BitSym = ConstMask Int | VarId Int deriving Show
 
 constBits w v = NetBits w (ConstMask v)
 
@@ -299,7 +304,11 @@ muxBits c a b = do x <- bitwiseXor a b
                    cx <- bitRepeat (bitWidth a) c
                    bitwiseXor a =<< bitwiseAnd cx x
 
-newOutput a = tell [OutputBits a]
+-- Avoids using bitwiseXor, since that results in constant propagation
+newOutput a = do a' <- if knownConst a 
+                          then emit $ BinOp BitXor a (constBits (bitWidth a) 0)
+                          else return a
+                 tell [OutputBits a']
 
 lsb a | bitWidth a == 1 = return . NetBool . bitValues $ a
       | otherwise       = liftM (NetBool . bitValues) $ bitSelect 0 1 a
@@ -313,6 +322,7 @@ dropMsb a = bitSelect 0 (bitWidth a-1) a
 splitLsb a = liftM2 (,) (lsb a) (dropLsb a)
 splitMsb a = liftM2 (,) (msb a) (dropMsb a)
 
+bitRepeat :: Int -> NetBool -> NetWriter NetBits
 bitRepeat n b = bitify b >>= sextendBits n
 
 class BitBunch a where bitify :: a -> NetWriter NetBits
@@ -345,12 +355,26 @@ scanSum l = aux l 0 where
 knownConst (NetBits { bitValues = ConstMask _ }) = True
 knownConst _ = False
 
-zextendBits w a | w <= bitWidth a = return a
-                | knownConst a = return $ a {bitWidth = w}
+zextendConst (NetBits{bitValues=ConstMask x}) w1 w2 
+  | x >=0 = x
+  | x < 0 = ((shift 1 w1)-1) .&. x
+
+sextendConst (NetBits{bitValues=ConstMask x}) w1 w2 = topbits .|. bottom where
+  topbits = if testBit x (w1-1) 
+               then xor ((shift 1 w2)-1) ((shift 1 w1)-1)
+               else 0
+  bottom = x .&. ((shift 1 w1)-1)
+
+zextendBits w a | w <= w' = return a
+                | knownConst a = return $ a {bitWidth = w, bitValues = ex}
                 | otherwise = emit $ ExtendOp ZeroExtend w a
-sextendBits w a | w <= bitWidth a = return a
-                | knownConst a = return $ a {bitWidth = w}
+                where w' = bitWidth a
+                      ex = ConstMask $ zextendConst a w' w
+sextendBits w a | w <= w' = return a
+                | knownConst a = return $ a {bitWidth = w, bitValues = ex}
                 | otherwise = emit $ ExtendOp SignExtend w a
+                where w' = bitWidth a
+                      ex = ConstMask $ sextendConst a w' w
 bitwiseGreater = checkWidth BitGt
 bitwiseEqual = checkWidth BitEq
 
@@ -421,6 +445,8 @@ instance Swappable a => Swappable (NetMaybe a) where
 
 ifThenElse c a b = mux c b a
 
+zipMux c a b = mapM (uncurry $ mux c) $ zip a b
+
 -- Returns weird elements if i >= len
 muxList i l = muxListOffset i 0 l
 
@@ -474,12 +500,13 @@ netMaybe Nothing = netNoth
 netMaybe (Just x) = netJust x
 
 -- The most *hated* function in all of existence!
-netFromJust p Nothing | knownFalse p = error "netFromJust casting known nothing"
-                      | otherwise = error "netMaybe data missing"
-netFromJust p (Just x) = x
+netFromJust (NetMaybe p Nothing) 
+  | knownFalse p = error "netFromJust casting known nothing"
+  | otherwise = error "netMaybe data missing"
+netFromJust (NetMaybe p (Just x)) = x
 
-knownNothing p _ = knownFalse p
-netIsNothing p _ = netNot p
+knownNothing (NetMaybe p _) = knownFalse p
+netIsNothing (NetMaybe p _) = netNot p
 
 condZap c (NetMaybe p mb) = do p' <- netAnd p =<< netNot c
                                return $ NetMaybe p' mb

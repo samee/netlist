@@ -49,6 +49,7 @@
 
 module Circuit.NetList.Gcil
 ( gcilList
+, GcilMonad
 , InputParty(..)
 , testInt
 , liftNet
@@ -160,8 +161,8 @@ stringOfOpcode (BinOp bop u v) = opline (bopStr bop) [u,v]
 stringOfOpcode (UnOp uop v) = opline (uopStr uop) [v]
 stringOfOpcode (ConcatOp l) = opline "concat" l
 stringOfOpcode (SelectOp st en v)
-  | st == 0   = unwords ["trunc",show en,vstr v]
-  | otherwise = unwords ["select",show st,show en,vstr v]
+  | st == 0   = unwords ["trunc",vstr v,show en]
+  | otherwise = unwords ["select",vstr v,show st,show en]
 stringOfOpcode (ExtendOp ext w v) = unwords [exts,vstr v,show w]
   where exts = case ext of ZeroExtend -> "zextend"; SignExtend -> "sextend"
 
