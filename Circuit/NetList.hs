@@ -58,6 +58,7 @@ module Circuit.NetList
 , decoder
 , decoderEn
 , decoderREn
+, decoderUnit
 , NetMaybe
 , netNoth
 , netJust
@@ -472,11 +473,13 @@ decoderREn en lo hi i = bitify i >>= aux en lo hi
   where 
   aux en lo hi i
     | lo>hi = undefined
-    | hi <= 0 || imax <= lo = return []
-    | w == 0 = return [en]
+    | hi <= 0 || imax <= lo || lo==hi = return []
+    | lo<0 = aux en 0 hi i
+    | hi>imax = aux en lo imax i
+    | w == 0 || hi-lo == 1  = return [en]
     | otherwise = do
         (b ,i')   <- splitMsb i
-        (en1,en2) <- if hi-lo <= half then return (en,en) else decoderUnit b en
+        (en1,en2) <- decoderUnit b en
         liftM2 (++) (aux en1 lo hi i') (aux en2 (lo-half) (hi-half) i')
       where
       imax = 2^w

@@ -7,15 +7,18 @@ import qualified Data.Sequence as S
 import Debug.Trace
 import System.Random
 
-import Circuit.Gcil.Compiler as Gc
-import Circuit.Gcil.Queue as Gq
+--import Circuit.Gcil.Compiler as Gc
+--import Circuit.Gcil.Queue as Gq
+import Circuit.NetList
+import Circuit.NetList.Gcil as Gc
+import Circuit.Queue as Gq
 import Test.Gcil (writeTestCase)
 
 data QueueAction = QueuePush Int | QueuePop Int deriving Show
 
 -- Push/pop only one-byte integers
-intWidth = 8
-maxTestInt = 2^intWidth - 1
+intW = 8
+maxTestInt = 2^intW - 1
 
 randomTest :: RandomGen g => Int -> Int -> g -> ([QueueAction],g)
 randomTest opCount maxlen rgen = runState (aux S.empty opCount) rgen 
@@ -44,34 +47,29 @@ popRandom n q = do
   return (q2, QueuePop x:acts)
 
 compileActs maxQLength acts = do
-  pushVars <- replicateM pushC (newInput intWidth 2)
-  popVars  <- replicateM popC  (newInput intWidth 1)
+  pushVars <- mapM (testInt ServerSide intW) pushVals
+  popVars  <- mapM (testInt ClientSide intW) popVals
   res <- cktMain pushVars popVars acts $ Gq.capLength maxQLength Gq.empty
-  newOutput (bitToInt res)
-  return  ( zip (map gblName pushVars) pushVals
-          , zip (map gblName  popVars) popVals )
+  gcilOutBits res -- =<< liftNet (bitify res)
   where
   (pushVals,popVals) = splitPushPop acts
   pushC = length pushVals
   popC = length popVals
 
-  cktMain :: [GblInt] -> [GblInt] -> [QueueAction] -> Queue GblInt
-          -> GcilMonad GblBool
-  cktMain [] [] [] _ = return bitOne
+  cktMain :: [NetUInt] -> [NetUInt] -> [QueueAction] -> Queue NetUInt
+          -> GcilMonad NetBool
+  cktMain [] [] [] _ = return netTrue
   cktMain (x:a) b (QueuePush _:acts) q = do
-    q'<- Gq.condPush bitOne x q
+    q'<- liftNet $ Gq.condPush netTrue x q
     cktMain a b acts q'
   cktMain a (x:b) (QueuePop _:acts) q = do
-    mb <- Gq.front q
-    q'<- Gq.condPop bitOne q
+    mb <- liftNet $ Gq.front q
+    q'<- liftNet $ Gq.condPop netTrue q
     r <- cktMain a b acts q'
-    ignoreAndsUsed $ do
-      b  <- Gc.not =<< Gc.gblIsNothing mb
-      eq <- equalU (Gc.castFromJust mb) x
-      andList [r,b,eq]
-
-burnRandomTest maxQLength acts 
-  = writeTestCase "queuetest" (compileActs maxQLength acts) fst snd
+    ignoreAndsUsed $ liftNet $ do
+      b  <- netNot =<< netIsNothing mb
+      eq <- equal (netFromJust mb) x
+      netAnds [r,b,eq]
 
 splitPushPop [] = ([],[])
 splitPushPop (QueuePush x: l) = (x:a,b) where (a,b) = splitPushPop l
@@ -79,4 +77,5 @@ splitPushPop (QueuePop  x: l) = (a,x:b) where (a,b) = splitPushPop l
 
 qsize = 200
 
-runTests = getStdRandom (randomTest 2000 qsize) >>= burnRandomTest qsize
+runTests = getStdRandom (randomTest 2000 qsize) 
+       >>= burnTestCase "queuetest" . gcilList . compileActs qsize
