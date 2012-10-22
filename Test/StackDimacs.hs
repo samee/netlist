@@ -7,7 +7,7 @@ import Circuit.NetList.Dimacs
 import qualified Circuit.Stack as CS
 import Util
 
-intW = 8
+intW = 16
 sumW = 16
 
 sumToZeroFast l = liftM fst $ foldM (\(s,done) v -> do
@@ -47,7 +47,7 @@ sumSolve summer prefLo prefHi fullLo n = do
   inputs <- replicateM n (freshInt intW)
   forM_ inputs $ \x -> dmAssert <=< liftNet $ greaterThan (constInt $ n+1) x
   dmPutStrLn $ dmWords inputs
-  dmAssert <=< liftNet $ do
+  dmAssert <=< liftHack $ do
     prefixSum <- summer (inputs :: [NetUInt])
     fullSum <- sumAll inputs
     c1 <- netNot =<< greaterThan (constInt prefLo) prefixSum
@@ -56,4 +56,4 @@ sumSolve summer prefLo prefHi fullLo n = do
     netAnds [c1,c2,c3]
 
 runTests = burnSatQuery "sumSolve" <=< dimacsList 
-             $ sumSolve sumToZeroSlow 1000 1000 5000 200
+             $ sumSolve sumToZero 1000 1000 5000 200

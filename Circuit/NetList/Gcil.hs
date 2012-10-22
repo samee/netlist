@@ -128,6 +128,7 @@ ignoreAndsUsed mr = do tell [StartIgnoreStats]
 
 andCost (OutputBits _) = 0
 andCost (AssignResult _ op) = opcodeAndCost op
+andCost (DeallocBits _) = 0
 
 -- Add, Sub and Neg should be a gate cheaper, but currently isn't
 opcodeAndCost (BinOp BitXor _ _) = 0
@@ -157,6 +158,7 @@ vstr (NetBits w (ConstMask v)) = show v++":"++show w
 vstr (NetBits w (VarId id)) = idName id
 stringOfNetInstr (AssignResult v opcode) = vstr v++" "++stringOfOpcode opcode
 stringOfNetInstr (OutputBits v) = ".output "++vstr v
+stringOfNetInstr (DeallocBits v) = ".remove "++vstr v
 stringOfOpcode (BinOp bop u v) = opline (bopStr bop) [u,v]
 stringOfOpcode (UnOp uop v) = opline (uopStr uop) [v]
 stringOfOpcode (ConcatOp l) = opline "concat" l

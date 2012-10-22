@@ -12,6 +12,7 @@
 module Circuit.NetList.Dimacs
 ( freshInt, freshBool, freshBits
 , liftNet
+, liftBunch
 , DmMonad
 , dimacsList
 , dmAssert
@@ -63,9 +64,26 @@ liftNet m = do ((a,endId),l) <- gets $ netList addend . nextNetBits
                     end <- nextBitId
                     return (r,end)
 
+-- A complete hack! A somewhat more memory-efficient version of liftNet
+-- that works only for BitBunch results (great for NetBool)
+liftBunch :: BitBunch a => NetWriter a -> DmMonad a
+liftBunch m = do ((bz,b,endId),l) <- gets $ netList addend . nextNetBits
+                 mapM_ compileNetInstr $ addDeallocs [bz] l
+                 modify $ \dmstate -> dmstate { nextNetBits = endId }
+                 return b
+  where addend = do r <- m
+                    end <- nextBitId
+                    rz <- bitify r
+                    return (rz,r,end)
+
 reindexBits (NetBits { bitValues = VarId id }) l = do
   ht <- gets symbolTable
   liftIO $ Ht.insert ht id l
+
+unindexBits (NetBits { bitValues = VarId id}) = do
+  ht <- gets symbolTable
+  liftIO $ Ht.delete ht id
+unindexBits (NetBits { bitValues = ConstMask _ }) = return ()
 
 netIdPlusPlus s = (id,s{nextNetBits=id+1}) where id = nextNetBits s
 varIdPlusPlus s = (id,s{nextVar=id+1}) where id = nextVar s
@@ -203,6 +221,7 @@ burnSatQuery caseName (varCount,bytecode)
   
 compileNetInstr (AssignResult res op) = reindexBits res =<< compileOp op
 compileNetInstr (OutputBits x) = dmPutStrLn (intFromBits x :: NetUInt)
+compileNetInstr (DeallocBits x) = unindexBits x
 
 compileOp (ConcatOp l) =
   liftM (concat.reverse) $ mapM bitList l
