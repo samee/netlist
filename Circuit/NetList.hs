@@ -479,14 +479,14 @@ decoderREn en lo hi i = bitify i >>= aux en lo hi
     | w == 0 || hi-lo == 1  = return [en]
     | otherwise = do
         (b ,i')   <- splitMsb i
-        (en1,en2) <- decoderUnit b en
+        (en1,en2) <- decoderUnit en b
         liftM2 (++) (aux en1 lo hi i') (aux en2 (lo-half) (hi-half) i')
       where
       imax = 2^w
       w = bitWidth i
       half = imax `div` 2
 
-decoderUnit b en = do p <- netAnd b en
+decoderUnit en b = do p <- netAnd b en
                       q <- netXor p en
                       return (q,p)
 

@@ -65,14 +65,12 @@ fromList (x1:x2:l)
   parentList [] = Nothing
   parentList l = Just $ fromList $ pairUp l
 
-
-
 front q = muxList (headPtr q) $ take 5 $ buffer q
+
 -- Apparently I do not need to check parent
 null q = equal (headPtr q) (tailPtr q)
 
 -- Internal use unambiguous aliases
-
 gqnull = Circuit.Queue.null
 gqempty = Circuit.Queue.empty
 
@@ -200,7 +198,7 @@ adjustHead q | headAdjusted q = return $ q { headAdjusted = False }
                    return (mbpl,Just par')
 
   distrJust mbp | knownNothing mbp = return nothpair
-                | otherwise = do p <- netNot =<< netIsNothing mbp
+                | otherwise = do p <- netIsNothing mbp
                                  let (a,b) = netFromJust mbp
                                  mapM (condZap p.netJust) [a,b]
 {-
