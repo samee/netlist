@@ -7,7 +7,9 @@ import Test.Demo
 import Circuit.Array
 
 main = do Test.Array.runTests
+          {-
           Test.StackCircuits.runTests
           Test.StackDimacs.runTests
           Test.QueueCircuits.runTests
           Test.Demo.runTests
+          -}

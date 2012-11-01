@@ -55,38 +55,48 @@ cmpSwapAddrSerial a@(aAddr,aSerial,_) b@(bAddr,bSerial,_) = do
   c <- chainGreaterThan c aAddr bAddr
   condSwap c a b
 
--- I have to change this later when I want arrays of non-integers
--- Right now I do not have a clean way of doing an Either a b type in circuits
+data ReadMix a mix = ReadMix { rmMixFromValue  :: a->NetWriter mix
+                             , rmMixFromSerial :: NetUInt->NetWriter mix
+                             , rmMixToValue  :: mix->NetWriter a
+                             , rmMixToSerial :: mix->NetWriter NetUInt
+                             }
+
 readArray :: NetInt a => NetArray a -> [NetUInt] -> NetWriter [a]
-readArray arr addrs = do --elts <- mapM (extend eltw) (elems arr)
-                         CA.readArray readSpecs (elems arr) addrs
-  where
+readArray arr addrs = readArrayBase rmix arr addrs where
   eltw = maximum $ map intWidth (elems arr)
-  serw  = indexSize $ length addrs
-  mixw  = max eltw serw
-  unambigLeft = Left :: NetUInt -> Either NetUInt NetUInt
-  readSpecs :: NetInt a => 
-    ReadSpecs NetWriter a NetUInt NetUInt (NetBool,NetBits) 
-                                          (NetMaybe(NetUInt,a))
-  -- Convention: Left  == Serial == True
-  --             Right == Value  == False
+  serw = indexSize $ length addrs
+  mixw = max eltw serw
+  mixInt x = bitify =<< extend mixw x
+  mixCast w z = liftM intFromBits $ bitTrunc w z
+  rmix = ReadMix { rmMixFromValue  = mixInt
+                 , rmMixFromSerial = mixInt
+                 , rmMixToValue  = mixCast eltw
+                 , rmMixToSerial = mixCast serw
+                 }
+
+-- I need to have a better way of using arrays of non-integers
+readArrayBase :: (Swappable a, Swappable mix)
+              => ReadMix a mix -> NetArray a -> [NetUInt] -> NetWriter [a]
+readArrayBase rmix arr addrs = CA.readArray readSpecs (elems arr) addrs
+  where
   readSpecs = CA.ReadSpecs
-    { rsMixFromValue  = mixFromEither mixw . Right
-    , rsMixFromSerial = mixFromEither mixw . unambigLeft . constInt
-    , rsMixToValue = mixCast eltw
+    { rsMixFromValue = (\x -> do z <- rmMixFromValue rmix x
+                                 return (netFalse,z))
+    , rsMixFromSerial= (\x -> do z <- rmMixFromSerial rmix (constInt x)
+                                 return (netTrue,z))
+    , rsMixToValue   = rmMixToValue rmix . snd
     , rsIfMixIsValue = muxOnEither
-    , rsConstAddr = return . constInt
-    , rsConstSerial = return . constInt
-    , rsArrayIndex = valueBeforeRead
-    , rsSift = swapOnJustRight
-    , rsFromMaybe = return . netFromJust
-    , rsToMaybe = return . netJust
-    , rsNoPair = netNoth
+    , rsConstAddr    = return . constInt
+    , rsConstSerial  = return . constInt
+    , rsArrayIndex   = valueBeforeRead
+    , rsSift         = swapOnJustRight
+    , rsFromMaybe    = return . netFromJust
+    , rsToMaybe      = return . netJust
+    , rsNoPair       = netNoth
     }
-  muxOnEither mix eltRes serialRes = do
-    eltRes <- mixCast eltw mix >>= eltRes
-    serRes <- mixCast serw mix >>= serialRes
-    tp <- mixType mix
+  muxOnEither (tp,bitz) eltRes serialRes = do
+    eltRes <- rmMixToValue  rmix bitz >>= eltRes
+    serRes <- rmMixToSerial rmix bitz >>= serialRes
     mux tp eltRes serRes
 
 -- First make sure all the Nothing ends up towards left
@@ -101,16 +111,6 @@ swapOnJustRight mbA mbB | knownNothing mbA = return (mbA,mbB)
                         c <- greaterThan serA serB
                         c <- chainGreaterThan c ap bp
                         condSwap c mbA mbB
-
-mixFromEither :: NetInt i => Int -> Either NetUInt i
-                          -> NetWriter (NetBool,NetBits)
-mixFromEither w eith = case eith of
-  Left serial -> do z <- bitify =<< extend w serial; return (netTrue,z)
-  Right value -> do z <- bitify =<< extend w value ; return (netFalse,z)
-
-mixCast w (_,mix) = liftM intFromBits $ bitTrunc w mix
-
-mixType = return.fst
 
 -- First compares by address, then by type if that fails
 -- if mix is value that comes first, if serial, it comes later
