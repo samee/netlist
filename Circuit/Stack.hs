@@ -1,6 +1,5 @@
 module Circuit.Stack
-( Stack (..)
---( Stack
+( Stack
 , empty
 , fromList
 , capLength
@@ -133,7 +132,8 @@ adjustPush stk | pushAdjusted stk = return $ stk { pushAdjusted = False }
   slideLcond <- greaterThan (headPtr stk) (constInt 3)
   newhp      <- condSub slideLcond (headPtr stk) (constInt 2)
   pushC      <- netAnd slideLcond =<< netNot =<< hollowHead buff
-  newbuff    <- zipMux slideLcond buff $ drop 2 buff ++ [netNoth,netNoth]
+  newbuff    <- zipMux slideLcond (take 3 buff) (drop 2 buff) 
+                    >>= return. ( ++[netNoth,netNoth] )
   newParent  <- if knownNothing $ head buff then return $ parent stk
                 else if mxlen <= 3 then return Nothing
                 else liftM Just $ condPush pushC pushItem oldParent
@@ -160,7 +160,8 @@ adjustPop stk | popAdjusted stk = return $ stk { popAdjusted = False }
                                   pres <- liftM Just $ condPop slideRcond p
                                   popitm <- distrJust =<< top p
                                   return (popitm,pres)
-  newbuff <- zipMux slideRcond buff $ popItems ++ take 4 buff
+  newbuff <- zipMux slideRcond (take 3 buff) (popItems++take 1 buff)
+                 >>= return. ( ++drop 3 buff )
   return $ stk  { buffer = newbuff, headPtr = newhp
                 , parent = newParent
                 , popAdjusted = True

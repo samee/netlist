@@ -143,8 +143,8 @@ adjustTail q | tailAdjusted q         = return $ q { tailAdjusted = False }
                newhead <- zipMux slideToHead (bufferHead q) 
                                              (take 3 $ drop 2 buff)
                hptr    <- condSub slideToHead (headPtr q) (constInt 2)
-               newtail <- zipMux tailSlide (bufferTail q) 
-                                           (last buff:[netNoth,netNoth])
+               newtail <- mux tailSlide (head$bufferTail q) (last buff)
+                            >>= return.(:[netNoth,netNoth])
                newPar  <- if maxlen <= 3 then return Nothing
                           else liftM Just $ condPush slideToParent 
                                   parentPayload oldparent
