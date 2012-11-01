@@ -14,8 +14,8 @@ import System.Random as R
 type CmpSwap m a = a -> a -> m (a,a)
 
 sort :: Monad m => CmpSwap m a -> [a] -> m [a]
---sort  = batcherSort
-sort = shellSort (mkStdGen 3949384)
+sort cmp l = if length l >= 500 then shellSort (mkStdGen 3949384) cmp l
+                                else batcherSort cmp l
 
 merge :: Monad m => CmpSwap m a -> [a] -> [a] -> m [a]
 merge = batcherMerge

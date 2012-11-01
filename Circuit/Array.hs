@@ -1,10 +1,7 @@
 module Circuit.Array where
 
 import Control.Monad
-import Control.Monad.State (modify)
 import qualified Data.Array as A
-import Debug.Trace
-import Prelude as P -- Me and my laziness
 
 import Circuit.Internal.Array as CA
 import Circuit.NetList as NL
@@ -25,13 +22,6 @@ arraySize arr = (+1) $ snd $ A.bounds $ elt $ arr
 
 get i arr = elt arr A.! i
 put i v arr = arr { elt = elt arr A.// [(i,v)] }  
-
-{-
-resizeUInt w i | w == t = return i
-               | w > t  = zextend w i
-               | w < t  = trunc w i
-               where t = gblWidth i
--}
 
 writeArray :: Swappable a 
            => NetArray a -> [(NetUInt,a)] -> NetWriter (NetArray a)
@@ -59,14 +49,6 @@ nothingGreater mbA mbB | knownNothing mbB = return (mbA,mbB)
                           c <- greaterThan a b
                           c <- chainGreaterThan c anp bnp
                           condSwap c mbA mbB
-                          {-
-nothingGreater a b = do  
-  (a@(GblMaybe ap ad),b@(GblMaybe bp bd)) <- equalSize a b
-  anp <- GC.not ap
-  bnp <- GC.not bp
-  c <- greaterByBits (GblMaybe anp ad) (GblMaybe bnp bd)
-  condSwap c a b
-  -}
 
 cmpSwapAddrSerial a@(aAddr,aSerial,_) b@(bAddr,bSerial,_) = do
   c <- greaterThan aSerial bSerial
@@ -76,8 +58,8 @@ cmpSwapAddrSerial a@(aAddr,aSerial,_) b@(bAddr,bSerial,_) = do
 -- I have to change this later when I want arrays of non-integers
 -- Right now I do not have a clean way of doing an Either a b type in circuits
 readArray :: NetInt a => NetArray a -> [NetUInt] -> NetWriter [a]
-readArray arr addrs = do elts <- mapM (extend eltw) (elems arr)
-                         CA.readArray readSpecs elts addrs
+readArray arr addrs = do --elts <- mapM (extend eltw) (elems arr)
+                         CA.readArray readSpecs (elems arr) addrs
   where
   eltw = maximum $ map intWidth (elems arr)
   serw  = indexSize $ length addrs
@@ -86,6 +68,8 @@ readArray arr addrs = do elts <- mapM (extend eltw) (elems arr)
   readSpecs :: NetInt a => 
     ReadSpecs NetWriter a NetUInt NetUInt (NetBool,NetBits) 
                                           (NetMaybe(NetUInt,a))
+  -- Convention: Left  == Serial == True
+  --             Right == Value  == False
   readSpecs = CA.ReadSpecs
     { rsMixFromValue  = mixFromEither mixw . Right
     , rsMixFromSerial = mixFromEither mixw . unambigLeft . constInt
@@ -112,23 +96,23 @@ swapOnJustRight mbA mbB | knownNothing mbA = return (mbA,mbB)
                         | otherwise = do
                         ap <- netNot =<< netIsNothing mbA
                         bp <- netNot =<< netIsNothing mbB
-                        c <- greaterThan ap bp
                         let  (serA,_) = netFromJust mbA
                              (serB,_) = netFromJust mbB
-                        c <- chainGreaterThan c serA serB
+                        c <- greaterThan serA serB
+                        c <- chainGreaterThan c ap bp
                         condSwap c mbA mbB
 
 mixFromEither :: NetInt i => Int -> Either NetUInt i
                           -> NetWriter (NetBool,NetBits)
 mixFromEither w eith = case eith of
-  Left serial -> liftM ((,)netTrue) $ bitify =<< extend w serial
-  Right value -> liftM ((,)netFalse)$ bitify =<< extend w value
+  Left serial -> do z <- bitify =<< extend w serial; return (netTrue,z)
+  Right value -> do z <- bitify =<< extend w value ; return (netFalse,z)
 
 mixCast w (_,mix) = liftM intFromBits $ bitTrunc w mix
 
 mixType = return.fst
 
--- Fragile code: first compares by address, then by type if that fails
+-- First compares by address, then by type if that fails
 -- if mix is value that comes first, if serial, it comes later
 valueBeforeRead a@(addrA,(at,_)) b@(addrB,(bt,_)) = do
   c <- greaterThan at bt

@@ -15,9 +15,6 @@ import Circuit.Sorter (CmpSwap)
 import qualified Circuit.Sorter as Sort
 import Util
 
--- TODO move the bug-prone parts of writeArray here
--- Adding addresses, stable sort, etc. fromJust should be wrapped?
-
 type CastWithIndex m a b = Int -> a -> m b
 type Cast m a b = a -> m b
 
