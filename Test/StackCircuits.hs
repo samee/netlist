@@ -7,7 +7,7 @@ import System.Random
 import Circuit.NetList as N
 import Circuit.NetList.Gcil as NG
 import qualified Circuit.Stack as S
-import Test.Gcil
+--import Test.Gcil
 
 itemWidth = 8
 expn = 100

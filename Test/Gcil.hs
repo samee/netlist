@@ -1,7 +1,6 @@
 module Test.Gcil where
 
 import Control.Monad.State.Strict
-import Circuit.Gcil.Array
 import Circuit.Gcil.Compiler as GC
 import Data.List
 import Debug.Trace

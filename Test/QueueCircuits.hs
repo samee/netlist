@@ -12,7 +12,7 @@ import System.Random
 import Circuit.NetList
 import Circuit.NetList.Gcil as Gc
 import Circuit.Queue as Gq
-import Test.Gcil (writeTestCase)
+--import Test.Gcil (writeTestCase)
 
 data QueueAction = QueuePush Int | QueuePop Int deriving Show
 

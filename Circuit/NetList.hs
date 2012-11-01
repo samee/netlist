@@ -121,6 +121,7 @@ data Opcode   = BinOp NetBinOp NetBits NetBits
               | SelectOp Int Int NetBits -- select or trunc
               | ExtendOp ExtendType Int NetBits
 
+-- I do miss a chained greater than command BitGtChain Bool
 data NetBinOp = BitAdd | BitSub | BitOr | BitAnd | BitXor | BitEq | BitGt
 data NetUnOp = BitNot | BitNeg | BitAny | BitParityOdd
 data ExtendType = SignExtend | ZeroExtend
@@ -252,6 +253,14 @@ instance NetOrd NetSInt where
     ax <- bitConcat [sIntBits a', rz]
     bx <- bitConcat [sIntBits b', constBits 1 0]
     signedGreaterByBits ax bx
+
+instance NetOrd NetBool where
+  chainGreaterThan r a b = do
+    ax <- bitConcat =<< sequence [bitify a, bitify r]
+    bx <- bitConcat.(:[constBits 1 0]) =<< bitify b
+    lsb <=< emit $ BinOp BitGt ax bx
+
+  greaterThan a b = netAnd a =<< netNot b
 
 -- Assumes both are already of equal size
 signedGreaterByBits :: NetBits -> NetBits -> NetWriter NetBool

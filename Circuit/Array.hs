@@ -1,159 +1,149 @@
-module Circuit.Array 
-( Cast
-, OpSpecs(..)
-, applyOps
-, applyOpsBase
-
-, WriteSpecs(..), ReadSpecs(..)
-, writeArray, readArray
-) where
+module Circuit.Array where
 
 import Control.Monad
+import Control.Monad.State (modify)
+import qualified Data.Array as A
 import Debug.Trace
+import Prelude as P -- Me and my laziness
 
-import Circuit.Sorter (CmpSwap)
-import qualified Circuit.Sorter as Sort
+import Circuit.Internal.Array as CA
+import Circuit.NetList as NL
 import Util
 
--- TODO move the bug-prone parts of writeArray here
--- Adding addresses, stable sort, etc. fromJust should be wrapped?
+newtype NetArray a = NetArray { elt :: A.Array Int a }
 
-type CastWithIndex m a b = Int -> a -> m b
-type Cast m a b = a -> m b
+repeatArray :: Monad m => Int -> m a -> m (NetArray a)
+repeatArray n eltmaker = liftM listArray $ replicateM n $ eltmaker
+-- repeatArray n eltmaker = liftM listArray $ sequence $ replicate n $ eltmaker
 
-data OpSpecs m elt op mix c mix' result 
-  = OpSpecs { castEltToMix    :: CastWithIndex m elt mix
-            , castOpToMix     :: CastWithIndex m op  mix
-            , cswpArrayIndex  :: CmpSwap m mix
-            , foldInit        :: c
-            , foldBody        :: c -> mix -> m (c,mix')
-            , cswpSift        :: CmpSwap m mix'
-            , castMixToElt    :: Cast m mix' elt
-            , castMixToResult :: Cast m mix' result
-            }
+listArray :: [a] -> NetArray a
+listArray l = NetArray  { elt = A.listArray (0,length l-1) l }
 
--- Obliviously applies operations to array elements
-applyOpsBase opSpecs arr ops = do
-  opmix  <- mapWithIndexM (castOpToMix  opSpecs) ops
-  eltmix <- mapWithIndexM (castEltToMix opSpecs) arr
-  mix    <- sortHalf (cswpArrayIndex opSpecs) 0 (length arr) (eltmix++opmix)
-  (foldend,mix') <- mapAccumM (foldBody opSpecs) (foldInit opSpecs) mix
-  sifted <- Sort.sort (cswpSift opSpecs) mix'
-  let (eltmix',resmix') = splitAt (length arr) sifted
-  arr <- mapM (castMixToElt opSpecs) eltmix'
-  res <- mapM (castMixToResult opSpecs) resmix'
-  return (arr,res,foldend)
+elems :: NetArray a -> [a]
+elems arr = A.elems $ elt arr
+arraySize arr = (+1) $ snd $ A.bounds $ elt $ arr
 
--- TODO improve dividing strategies later
--- Operation on the same element will be performed in the order they are
---   provided. However, there are no guarantees about the order of operations
---   among different elements. I mean, that's why it's called a batch operation
-applyOps opSpecs arr ops = do
-  let opsBlockized = [ops]--divideList (max 1 $ length ops `div` length arr) ops
-  ((foldend,arr),resBlockized) <- mapAccumM (\(acc,arr) block -> do
-    (arr,result,acc) <- applyOpsBase opSpecs arr block
-    return ((acc,arr),result)) (foldInit opSpecs,arr) opsBlockized
-  return (arr,concat resBlockized,foldend)
+get i arr = elt arr A.! i
+put i v arr = arr { elt = elt arr A.// [(i,v)] }  
 
--- Well, not exactly half --- you get to specify a range [a,b) which is assumed
--- to be already sorted. Note that the right endpoint of the range is exclusive
-sortHalf cmpSwap a b l | (a>b)          = undefined
-                       | len<=1         = return l
-                       | a<=0 && b>=len = return l
-                       | b<=0 || a>=len = Sort.sort cmpSwap l
-                       | otherwise      = do  
-                          left  <- sortHalf cmpSwap a b larg
-                          right <- sortHalf cmpSwap (a-h) (b-h) rarg
-                          Sort.merge cmpSwap left right
-  where len = length l
-        h = len `div` 2
-        (larg,rarg) = splitAt h l
+{-
+resizeUInt w i | w == t = return i
+               | w > t  = zextend w i
+               | w < t  = trunc w i
+               where t = gblWidth i
+-}
 
----------------------------------- writeArray --------------------------------
-
-data WriteSpecs m elt addr serial maybePair 
-  = WriteSpecs  { wsConstAddr   :: Int -> m addr
-                , wsConstSerial :: Int -> m serial
-                -- Swap on first comparing by addr, then by serial
-                , wsArrayIndex :: CmpSwap m (addr,serial,elt)
-                , wsNoPair    :: maybePair
-                , wsFromMaybe :: maybePair -> m (addr,elt)
-                , wsToMaybe   :: (addr,elt) -> m maybePair
-                , wsIfEq  :: addr -> addr -> maybePair -> maybePair 
-                          -> m maybePair
-                -- Swap such that wsNoPair comes last, and compare addr in rest
-                , wsSift :: CmpSwap m maybePair
-                }
-
-writeArray :: Monad m => WriteSpecs m elt addr serial maybePair
-                      -> [elt] -> [(addr,elt)] -> m [elt]
-writeArray _ [] _ = return []
-writeArray ws arr cmd
-  = do  (arr',_,Just(_,last)) <- applyOps opSpecs arr cmd 
-        return $ init arr'++[last]
+writeArray :: Swappable a 
+           => NetArray a -> [(NetUInt,a)] -> NetWriter (NetArray a)
+writeArray arr cmd = liftM listArray $ CA.writeArray writeSpecs (elems arr) cmd
   where
-  opSpecs = OpSpecs { castEltToMix    = attachAddress
-                    , castOpToMix     = attachSerial
-                    , cswpArrayIndex  = wsArrayIndex ws
-                    , foldInit        = Nothing
-                    , foldBody        = fb
-                    , cswpSift        = wsSift ws
-                    , castMixToElt    = wsFromMaybe ws >=> return.snd
-                    , castMixToResult = return
-                    }
-  attachAddress a v = do  ax <- wsConstAddr ws a
-                          sx <- wsConstSerial ws 0
-                          return (ax, sx, v)
-  attachSerial i (a,v) = do ax <- wsConstSerial ws (i+1)
-                            return (a, ax, v)
-  fb Nothing (addr,_,elt)             = return (Just (addr,elt), wsNoPair ws)
-  fb (Just (paddr,pelt)) (addr,_,elt) = do
-    box <- wsToMaybe ws (paddr,pelt)
-    out <- wsIfEq ws paddr addr (wsNoPair ws) box
-    return (Just (addr,elt), out) 
+  addrw = indexSize $ arraySize arr
+  serw  = indexSize $ length cmd
+  writeSpecs = CA.WriteSpecs 
+    { wsConstAddr = return . constInt
+    , wsConstSerial = return . (constInt :: Int -> NetUInt)
+    , wsArrayIndex = cmpSwapAddrSerial
+    , wsNoPair    = netNoth
+    , wsFromMaybe = return . netFromJust
+    , wsToMaybe   = return . netJust
+    , wsIfEq = \a b t f -> do eq <- equal a b; mux eq f t
+    , wsSift = nothingGreater
+    }
 
+nothingGreater mbA mbB | knownNothing mbB = return (mbA,mbB)
+                       | knownNothing mbA = return (mbB,mbA)
+                       | otherwise = do
+                          anp <- netIsNothing mbA
+                          bnp <- netIsNothing mbB
+                          let (a,_) = netFromJust mbA; (b,_) = netFromJust mbB
+                          c <- greaterThan a b
+                          c <- chainGreaterThan c anp bnp
+                          condSwap c mbA mbB
+                          {-
+nothingGreater a b = do  
+  (a@(GblMaybe ap ad),b@(GblMaybe bp bd)) <- equalSize a b
+  anp <- GC.not ap
+  bnp <- GC.not bp
+  c <- greaterByBits (GblMaybe anp ad) (GblMaybe bnp bd)
+  condSwap c a b
+  -}
 
----------------------------------- readArray ---------------------------------
+cmpSwapAddrSerial a@(aAddr,aSerial,_) b@(bAddr,bSerial,_) = do
+  c <- greaterThan aSerial bSerial
+  c <- chainGreaterThan c aAddr bAddr
+  condSwap c a b
 
-data ReadSpecs m elt addr serial serialOrValue maybePair 
-  = ReadSpecs { rsMixFromValue :: elt -> m serialOrValue
-              , rsMixFromSerial:: Int -> m serialOrValue
-              , rsMixToValue :: serialOrValue -> m elt
-              , rsIfMixIsValue :: serialOrValue 
-                  -> (elt    -> m (elt,maybePair))
-                  -> (serial -> m (elt,maybePair))
-                  -> m (elt,maybePair)
-              , rsConstAddr   :: Int -> m addr
-              , rsConstSerial :: Int -> m serial
-              , rsArrayIndex :: CmpSwap m (addr,serialOrValue)
-              , rsSift :: CmpSwap m maybePair
-              , rsFromMaybe :: maybePair -> m (serial,elt)
-              , rsToMaybe :: (serial,elt) -> m maybePair
-              , rsNoPair :: maybePair
-              }
-
-readArray :: Monad m  => ReadSpecs m elt addr serial serialOrValue maybePair
-                      -> [elt] -> [addr] -> m [elt]
-readArray _ [] _ = undefined
-readArray rs arr cmd = do (_,res,_) <- applyOps opSpecs arr cmd; return res
+-- I have to change this later when I want arrays of non-integers
+-- Right now I do not have a clean way of doing an Either a b type in circuits
+readArray :: NetInt a => NetArray a -> [NetUInt] -> NetWriter [a]
+readArray arr addrs = do elts <- mapM (extend eltw) (elems arr)
+                         CA.readArray readSpecs elts addrs
   where
-  opSpecs = OpSpecs { castEltToMix = attachAddress
-                    , castOpToMix = attachSerial
-                    , cswpArrayIndex = rsArrayIndex rs
-                    , foldInit = Nothing
-                    , foldBody = fb
-                    , cswpSift = rsSift rs
-                    , castMixToElt = rsFromMaybe rs >=> return.snd -- dead code
-                    , castMixToResult = rsFromMaybe rs >=> return.snd
-                    }
-  attachAddress a v = do  ax <- rsConstAddr rs a
-                          vx <- rsMixFromValue rs v
-                          return (ax,vx)
-  attachSerial i a = rsMixFromSerial rs i >>= return.((,)a)
-  fb Nothing (a,mix) = do v<-rsMixToValue rs mix; return (Just v,rsNoPair rs)
-  fb (Just v) (a,mix) = do
-    (v,out) <- rsIfMixIsValue rs mix changeValue emitValue
-    return (Just v,out)
-    where
-      changeValue v' = return (v',rsNoPair rs)
-      emitValue s    = do p <- rsToMaybe rs (s,v); return (v,p)
+  eltw = maximum $ map intWidth (elems arr)
+  serw  = indexSize $ length addrs
+  mixw  = max eltw serw
+  unambigLeft = Left :: NetUInt -> Either NetUInt NetUInt
+  readSpecs :: NetInt a => 
+    ReadSpecs NetWriter a NetUInt NetUInt (NetBool,NetBits) 
+                                          (NetMaybe(NetUInt,a))
+  readSpecs = CA.ReadSpecs
+    { rsMixFromValue  = mixFromEither mixw . Right
+    , rsMixFromSerial = mixFromEither mixw . unambigLeft . constInt
+    , rsMixToValue = mixCast eltw
+    , rsIfMixIsValue = muxOnEither
+    , rsConstAddr = return . constInt
+    , rsConstSerial = return . constInt
+    , rsArrayIndex = valueBeforeRead
+    , rsSift = swapOnJustRight
+    , rsFromMaybe = return . netFromJust
+    , rsToMaybe = return . netJust
+    , rsNoPair = netNoth
+    }
+  muxOnEither mix eltRes serialRes = do
+    eltRes <- mixCast eltw mix >>= eltRes
+    serRes <- mixCast serw mix >>= serialRes
+    tp <- mixType mix
+    mux tp eltRes serRes
+
+-- First make sure all the Nothing ends up towards left
+-- and then among the Just, compare by serial
+swapOnJustRight mbA mbB | knownNothing mbA = return (mbA,mbB)
+                        | knownNothing mbB = return (mbB,mbA)
+                        | otherwise = do
+                        ap <- netNot =<< netIsNothing mbA
+                        bp <- netNot =<< netIsNothing mbB
+                        c <- greaterThan ap bp
+                        let  (serA,_) = netFromJust mbA
+                             (serB,_) = netFromJust mbB
+                        c <- chainGreaterThan c serA serB
+                        condSwap c mbA mbB
+
+mixFromEither :: NetInt i => Int -> Either NetUInt i
+                          -> NetWriter (NetBool,NetBits)
+mixFromEither w eith = case eith of
+  Left serial -> liftM ((,)netTrue) $ bitify =<< extend w serial
+  Right value -> liftM ((,)netFalse)$ bitify =<< extend w value
+
+mixCast w (_,mix) = liftM intFromBits $ bitTrunc w mix
+
+mixType = return.fst
+
+-- Fragile code: first compares by address, then by type if that fails
+-- if mix is value that comes first, if serial, it comes later
+valueBeforeRead a@(addrA,(at,_)) b@(addrB,(bt,_)) = do
+  c <- greaterThan at bt
+  c <- chainGreaterThan c addrA addrB
+  condSwap c a b
+
+------------------------------------ Bad versions ----------------------------
+
+badReadArray :: Swappable a => NetArray a -> [NetUInt] -> NetWriter [a]
+badReadArray arr inds = forM inds (\i -> muxList i (elems arr))
+
+badWriteArray :: Swappable a => NetArray a -> [(NetUInt,a)] 
+              -> NetWriter (NetArray a)
+badWriteArray arr cmd = foldM (\arr (i,v) -> writeBad i v arr) arr cmd
+  where
+  writeBad ind val arr = do
+    en <- decoder ind
+    liftM listArray $ forM (zip en $ elems arr) (\(en,elt) -> mux en elt val)

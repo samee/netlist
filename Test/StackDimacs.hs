@@ -47,7 +47,7 @@ sumSolve summer prefLo prefHi fullLo n = do
   inputs <- replicateM n (freshInt intW)
   forM_ inputs $ \x -> dmAssert <=< liftNet $ greaterThan (constInt $ n+1) x
   dmPutStrLn $ dmWords inputs
-  dmAssert <=< liftHack $ do
+  dmAssert <=< liftBunch $ do
     prefixSum <- summer (inputs :: [NetUInt])
     fullSum <- sumAll inputs
     c1 <- netNot =<< greaterThan (constInt prefLo) prefixSum

@@ -121,6 +121,7 @@ liftNet nw = do initId <- lift get
                     endId <- nextBitId
                     return (r,endId)
 
+ignoreAndsUsed :: GcilMonad a -> GcilMonad a
 ignoreAndsUsed mr = do tell [StartIgnoreStats]
                        r <- mr
                        tell [EndIgnoreStats]
