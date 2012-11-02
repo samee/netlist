@@ -17,22 +17,28 @@ intW = 16     -- 16-bit integers
 
 writeManual a l = elems (arr // l) where
   arr = listArray (0,length a-1) a
+writeTest = modifyTest CA.writeArray writeManual
 
-writeTest :: [Int] -> [(Int,Int)] -> GcilMonad ()
-writeTest init cmds = do
+addManual a l = elems $ accum (+) arr l where
+  arr = listArray (0,length a-1) a
+addTest = modifyTest CA.addToArray addManual
+
+type Modify a = CA.NetArray a -> [(NetUInt,a)] -> NetWriter (CA.NetArray a)
+type ManualModify a = [a] -> [(Int,a)] -> [a]
+
+modifyTest :: Modify NetUInt -> ManualModify Int -> [Int] -> [(Int,Int)]
+              -> GcilMonad()
+modifyTest modifyBatch modifyManual init cmds = do
   initV <- liftM CA.listArray $ forM init $ testInt ServerSide intW
   cmdV  <- forM cmds $ \(a,v) -> do a <- testInt ClientSide addrLen a
                                     v <- testInt ClientSide intW v
                                     return (a,v)
-  arr <- liftNet $ liftM CA.elems $ writeBatch initV cmdV
-  arr'<- return $ map constInt (writeManual init cmds)
+  arr <- liftNet $ liftM CA.elems $ modifyBatch initV cmdV
+  arr'<- return $ map constInt (modifyManual init cmds)
   ignoreAndsUsed $ liftNet $ 
     newOutput =<< bitify =<< netAnds =<< forM (zip arr arr') (uncurry equal)
   where
   addrLen = indexSize (length init)
-  writeBatch :: CA.NetArray NetUInt -> [(NetUInt,NetUInt)] 
-             -> NetWriter(CA.NetArray NetUInt)
-  writeBatch = CA.writeArray
 
 readTest init addrs = do
   initV <- liftM CA.listArray $ forM init $ testInt ServerSide intW
@@ -65,6 +71,7 @@ randomWriteCmds n cmdn rgen = flip runState rgen $ do
 
 runTests = do burnTestCase "smallwrite" $gcilList$ writeTest smallList writeCmd
               burnTestCase "smallread" $gcilList$ readTest  smallList readAddrs
+              burnTestCase "smalladd" $gcilList$ addTest smallList writeCmd
               let n=500; cmdn=500
               largeList <- getStdRandom $ randomList (2^intW) n
               writeCmdLots <- getStdRandom $ randomWriteCmds n cmdn
@@ -73,3 +80,5 @@ runTests = do burnTestCase "smallwrite" $gcilList$ writeTest smallList writeCmd
                 $ writeTest largeList writeCmdLots
               burnTestCase "largeread" $gcilList
                 $ readTest  largeList readAddrsLots
+              burnTestCase "largeadd" $gcilList
+                $ addTest largeList writeCmdLots
