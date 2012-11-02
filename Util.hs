@@ -16,6 +16,8 @@ bind2 f a b = join $ liftM2 f a b
 bind3 f a b c = join $ liftM3 f a b c
 joinAp f ma = do a <- ma; f a
 
+ceilDiv a b = (a+b-1) `div` b
+
 mapAccumM :: Monad m => (c -> a -> m (c,b)) -> c -> [a] -> m (c,[b])
 mapAccumM f init xs = do
   (acc,rev) <- foldM (\(acc,ys) x -> do

@@ -12,6 +12,8 @@ newtype NetArray a = NetArray { elt :: A.Array Int a }
 repeatArray :: Monad m => Int -> m a -> m (NetArray a)
 repeatArray n eltmaker = liftM listArray $ replicateM n $ eltmaker
 -- repeatArray n eltmaker = liftM listArray $ sequence $ replicate n $ eltmaker
+-- TODO sifting can now use a stack you know
+-- and a stack could use a minsize
 
 listArray :: [a] -> NetArray a
 listArray l = NetArray  { elt = A.listArray (0,length l-1) l }
@@ -40,6 +42,7 @@ writeArray arr cmd = liftM listArray $ CA.writeArray writeSpecs (elems arr) cmd
     , wsSift = nothingGreater
     }
 
+-- First compares by nothing, which is placed later. Then compares first
 nothingGreater mbA mbB | knownNothing mbB = return (mbA,mbB)
                        | knownNothing mbA = return (mbB,mbA)
                        | otherwise = do
@@ -118,6 +121,34 @@ valueBeforeRead a@(addrA,(at,_)) b@(addrB,(bt,_)) = do
   c <- greaterThan at bt
   c <- chainGreaterThan c addrA addrB
   condSwap c a b
+
+
+addToArray :: NetInt i => NetArray i -> [(NetUInt,i)] -> NetWriter (NetArray i)
+addToArray arr cmds = do (elts',_,Just(_,last)) <- CA.applyOps opSpecs elts cmds
+                         return $ listArray $ init elts' ++ [last]
+  where
+  elts = elems arr
+  opSpecs :: NetInt i => OpSpecs NetWriter i (NetUInt,i) (NetUInt,i) 
+                     (Maybe(NetUInt,i)) (NetMaybe(NetUInt,i)) 
+                     (NetMaybe(NetUInt,i))
+  opSpecs = OpSpecs { castEltToMix = (\i x -> return (constInt i,x))
+                    , castOpToMix  = (\_ x -> return x)
+                    , cswpArrayIndex = byAddr
+                    , foldInit = Nothing
+                    , foldBody = accum
+                    , cswpSift = nothingGreater
+                    , castMixToElt = return.snd.netFromJust
+                    , castMixToResult = return
+                    }
+  accum Nothing x = return (Just x,netNoth)
+  accum (Just (adA,valA)) (adB,valB) = do
+    eq <- equal adA adB
+    nxtSum <- condAdd eq valB valA
+    curOut <- mux eq (netJust(adA,valA)) netNoth
+    return (Just(adB,nxtSum),curOut)
+
+byAddr a@(adA,_) b@(adB,_) = do c <- greaterThan adA adB
+                                condSwap c a b
 
 ------------------------------------ Bad versions ----------------------------
 

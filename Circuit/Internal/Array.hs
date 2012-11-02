@@ -46,7 +46,7 @@ applyOpsBase opSpecs arr ops = do
 --   provided. However, there are no guarantees about the order of operations
 --   among different elements. I mean, that's why it's called a batch operation
 applyOps opSpecs arr ops = do
-  let opsBlockized = [ops]--divideList (max 1 $ length ops `div` length arr) ops
+  let opsBlockized = divideList (length ops `ceilDiv` length arr) ops
   ((foldend,arr),resBlockized) <- mapAccumM (\(acc,arr) block -> do
     (arr,result,acc) <- applyOpsBase opSpecs arr block
     return ((acc,arr),result)) (foldInit opSpecs,arr) opsBlockized
