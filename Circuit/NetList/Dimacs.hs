@@ -28,7 +28,9 @@ import Control.Monad.Writer
 import Control.Monad.State.Strict
 import Data.Bits
 import qualified Data.HashTable as Ht
+import Data.List
 import Data.Maybe
+import Debug.Trace
 import System.IO
 
 import Circuit.NetList
@@ -52,7 +54,7 @@ dimacsList :: DmMonad a -> IO (Int,[DimacsInstr])
 dimacsList ckt = do 
   ht <- Ht.new (==) Ht.hashInt
   (cl,endState) <- runStateT (execWriterT ckt) (init ht)
-  return $ (nextVar endState-1, Clause [1]:cl)
+  return (nextVar endState-1, Clause [1]:cl)
   where init ht = DmState {symbolTable=ht, nextVar=2, nextNetBits=1}
 
 liftNet :: NetWriter a -> DmMonad a
@@ -85,8 +87,10 @@ unindexBits (NetBits { bitValues = VarId id}) = do
   liftIO $ Ht.delete ht id
 unindexBits (NetBits { bitValues = ConstMask _ }) = return ()
 
-netIdPlusPlus s = (id,s{nextNetBits=id+1}) where id = nextNetBits s
-varIdPlusPlus s = (id,s{nextVar=id+1}) where id = nextVar s
+netIdPlusPlus s = nxt `seq` (id,s{nextNetBits=nxt}) where id = nextNetBits s
+                                                          nxt = id+1
+varIdPlusPlus s = nxt `seq` (id,s{nextVar=nxt}) where id = nextVar s
+                                                      nxt = id+1
 
 freshBits w = do id <- state netIdPlusPlus
                  let z = conjureBits w id
@@ -152,12 +156,21 @@ dmAssert b = putClause.(:[]) =<< dmOrList =<< dmBitify b
 data FormatToken = UIntTok NetUInt | SIntTok NetSInt | BoolTok NetBool
                  | StringTok String
 
-class DmShow a where dmShow :: a -> [FormatToken]
-instance DmShow [FormatToken] where dmShow = id
-instance DmShow [Char]  where dmShow = (:[]).StringTok
+class DmShow a where 
+  dmShow :: a -> [FormatToken]
+  dmShowList :: [a] -> [FormatToken]
+  dmShowList l = [StringTok "["] 
+               ++ intercalate [StringTok ","] (map dmShow l)
+               ++ [StringTok "]"]
+
+instance DmShow FormatToken where dmShow = (:[]); dmShowList = id
+instance DmShow Char    where 
+  dmShow = (:[]).StringTok.(:[]) 
+  dmShowList = (:[]).StringTok
 instance DmShow NetUInt where dmShow = (:[]).UIntTok
 instance DmShow NetSInt where dmShow = (:[]).SIntTok
 instance DmShow NetBool where dmShow = (:[]).BoolTok
+instance DmShow a => DmShow [a] where dmShow = dmShowList
 
 infixr 4 -|-
 a -|- b = dmShow a ++ dmShow b

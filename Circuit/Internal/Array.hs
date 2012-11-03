@@ -42,11 +42,13 @@ applyOpsBase opSpecs arr ops = do
   return (arr,res,foldend)
 
 -- TODO improve dividing strategies later
+-- Hang on, this dividing strategy is complete rubbish! Taking the fold end
+-- and feeding it back later absolutely does NOT work!
 -- Operation on the same element will be performed in the order they are
 --   provided. However, there are no guarantees about the order of operations
 --   among different elements. I mean, that's why it's called a batch operation
 applyOps opSpecs arr ops = do
-  let opsBlockized = divideList (length ops `ceilDiv` length arr) ops
+  let opsBlockized = [ops] -- divideList (length ops `div` length arr) ops
   ((foldend,arr),resBlockized) <- mapAccumM (\(acc,arr) block -> do
     (arr,result,acc) <- applyOpsBase opSpecs arr block
     return ((acc,arr),result)) (foldInit opSpecs,arr) opsBlockized

@@ -160,5 +160,12 @@ badWriteArray :: Swappable a => NetArray a -> [(NetUInt,a)]
 badWriteArray arr cmd = foldM (\arr (i,v) -> writeBad i v arr) arr cmd
   where
   writeBad ind val arr = do
-    en <- decoder ind
+    en <- decoderREn netTrue 0 (arraySize arr) ind
     liftM listArray $ forM (zip en $ elems arr) (\(en,elt) -> mux en elt val)
+    
+badAddToArray arr cmd = foldM (\arr (i,v) -> addBad i v arr) arr cmd
+  where
+  addBad ind val arr = do
+    en <- decoderREn netTrue 0 (arraySize arr) ind
+    liftM listArray $ forM (zip en $ elems arr) 
+                           (\(en,elt) -> condAdd en elt val)

@@ -3,13 +3,11 @@ import Test.StackCircuits
 import Test.StackDimacs
 import Test.QueueCircuits
 import Test.Demo
+import Test.DimacsDemo
 
-import Circuit.Array
-
-main = do Test.Array.runTests
-          {-
+main = do Test.DimacsDemo.runTests
+          Test.Array.runTests
           Test.StackCircuits.runTests
           Test.StackDimacs.runTests
           Test.QueueCircuits.runTests
           Test.Demo.runTests
-          -}
