@@ -8,9 +8,9 @@ import Circuit.NetList.Gcil
 
 theOp :: NetUInt -> NetWriter NetUInt
 theOp x = do gt  <- greaterThan x (constInt 5)
-             x   <- condSub gt x (constInt 3)
+             x'  <- condSub gt x (constInt 3)
              shx <- shiftLeft 1 x
-             x   <- mux gt shx x
+             x   <- mux gt shx x'
              return x
 
 theOpLocal x = if x>5 then x-3 else 2*x

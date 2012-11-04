@@ -99,5 +99,5 @@ deep n = do
   dmAssert <=< liftBunch $ equal (constInt 0) 
            =<< foldM (\x _ -> sub (constInt 1) x) x [1..n]
 
-runTests = burnSatQuery "offByOne" <=< dimacsList $ nonZeroFreqs 500 501
+runTests = burnSatQuery "offByOne" $ nonZeroFreqs 200 201
            -- burnSatQuery "deep" <=< dimacsList $ deep 10000

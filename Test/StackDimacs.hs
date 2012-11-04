@@ -55,5 +55,5 @@ sumSolve summer prefLo prefHi fullLo n = do
     c3 <- netNot =<< greaterThan (constInt fullLo) fullSum
     netAnds [c1,c2,c3]
 
-runTests = burnSatQuery "sumSolve" <=< dimacsList 
+runTests = burnSatQuery "sumSolve"
              $ sumSolve sumToZero 1000 1000 5000 200

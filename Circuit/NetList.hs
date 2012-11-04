@@ -378,6 +378,7 @@ class BitBunch a where bitify :: a -> NetWriter NetBits
 instance BitBunch NetUInt where bitify = return . uIntBits
 instance BitBunch NetSInt where bitify = return . sIntBits
 instance BitBunch NetBool where bitify = return . NetBits 1 . boolValue
+instance BitBunch NetBits where bitify = return
 
 bitwiseNot = emit . UnOp BitNot
 bitwiseAnd = checkWidth BitAnd
