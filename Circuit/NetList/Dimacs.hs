@@ -57,10 +57,10 @@ data DmState = DmState { -- symbolTable :: Ht.HashTable Int [Int]
 
 type DmMonad = WriterT [BitLevel] (State DmState)
 
-compileStep :: Backend be => (be()->be()) -> DmMonad () -> be ()
+compileStep :: (Backend be, Monad m) => (be() -> m()) -> DmMonad () -> m ()
 compileStep step m = do
   forM_ intlCode $ \ic -> case ic of
-    FreshBits z -> reindexBits z =<< replicateM (bitWidth z) freshVar
+    FreshBits z -> step $ reindexBits z =<< replicateM (bitWidth z) freshVar
     NetWrap ni  -> forM_ ni $ step.compileNetInstr
     ShowCmd tkl -> forM_ tkl $ step.compileTok
     AssertNZ z  -> step $ compileAssert z
@@ -124,22 +124,10 @@ dimacsList :: DmMonad () -> (DimacsInstr -> IO()) -> IO()
 dimacsList m itemWriter = do
   ht <- Ht.new (==) Ht.hashInt
   itemWriter $ Clause [1]
-  runStateT (runWriterT $ compileStep coughup m) (BlastState ht 2)
+  runStateT (compileStep coughup m) (BlastState ht 2)
   return ()
   where
-  coughup bb = censor (const[]) $ do di <- liftM snd $ listen bb
-                                     forM_ di $ liftIO.itemWriter
-                                     return ()
-
-{-
--- returns variable count in circuit
-dimacsList :: DmMonad a -> IO (Int,[DimacsInstr])
-dimacsList ckt = do 
-  ht <- Ht.new (==) Ht.hashInt
-  (cl,endState) <- runStateT (execWriterT ckt) (init ht)
-  return (nextVar endState-1, Clause [1]:cl)
-  where init ht = DmState {symbolTable=ht, nextVar=2, nextNetBits=1}
-        -}
+  coughup bb = mapM_ (liftIO.itemWriter) =<< execWriterT bb
 
 liftNet :: NetWriter a -> DmMonad a
 liftNet m = do ((a,endId),l) <- gets $ netList addend . nextNetBits
