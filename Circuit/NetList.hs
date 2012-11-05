@@ -283,6 +283,7 @@ equal a b = emitIntOp BitEq a b >>= bitify >>= lsb
 condAdd c a b = add a =<< mux c (constInt 0) b
 condSub c a b = sub a =<< mux c (constInt 0) b
 
+shiftLeft :: NetInt a => Int -> a -> NetWriter a
 shiftLeft amt x = do z <- bitify x
                      liftM intFromBits $ bitConcat [z,constBits amt 0]
 

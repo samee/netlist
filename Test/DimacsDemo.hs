@@ -78,7 +78,7 @@ nonZeroFreqs vmax nmax = do
       return (c,ac,err,(arr!!i,ci):wlist)
       ) (netTrue, netTrue, netFalse, []) [0..nmax-1]
     -- commit writes
-    tempFreqs <- liftM elems $ badAddToArray (listArray tempFreqs) wlist
+    tempFreqs <- liftM elems $ addToArray (listArray tempFreqs) wlist
     ac <- netAnd ac =<< greaterThan (constInt $ nmax+1) n
     (err,_,_) <- foldM (\(err,freqs,values) (i,tf) -> do
       vl <- Stk.length values
