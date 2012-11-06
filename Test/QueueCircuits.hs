@@ -19,7 +19,7 @@ import Util
 data QueueAction = QueuePush Int | QueuePop Int deriving Show
 
 -- Push/pop only one-byte integers
-intW = 8
+intW = 16
 maxTestInt = 2^intW - 1
 
 randomTest :: RandomGen g => Int -> Int -> g -> ([QueueAction],g)

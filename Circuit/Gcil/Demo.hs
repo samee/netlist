@@ -4,6 +4,7 @@ import Control.Monad
 import Data.List
 import Debug.Trace
 
+import Circuit.Sorter
 import Circuit.Gcil.Compiler as Gc
 import Circuit.Gcil.Queue as Gq
 import Circuit.Gcil.Stack as Gs
@@ -32,11 +33,17 @@ Mapping: theta[i..j] -> inRange (Queue, never empty)
          theta[i]    -> lastInRange
          theta[j+1..n-1] -> unseen (Queue)
 -}
+
+mergeInts l1 l2 = merge swapIfGt l1 l2 where
+  swapIfGt a b = do c <- greaterThanU a b
+                    condSwap c a b
+
 wideAngle theta maxTheta = do
   let result  = constArg (gblWidth maxTheta) 0
       unseen  = Gq.fromList $ tail theta
       cur     = head theta
       inRange = Gq.fromList [head theta]
+  theta <- mergeInts firstHalf secondHalf
   (result,_,_,_) <- foldM (\(result,cur,unseen,inRange) _ -> do
     lastInRange  <- liftM castFromJust $ Gq.front inRange
     curAngle <- modDiff maxTheta lastInRange cur
@@ -58,6 +65,7 @@ wideAngle theta maxTheta = do
   return result
   where
   n = length theta
+  (firstHalf,secondHalf) = splitAt (n`div`2) theta
 
 -- modDiff m a b assumes a <= b < maxtheta
 modDiff m a b = do 

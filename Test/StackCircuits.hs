@@ -10,7 +10,7 @@ import qualified Circuit.Stack as S
 import Util
 --import Test.Gcil
 
-itemWidth = 8
+itemWidth = 16
 -- expn = 100
 -- maxn = 2*expn
 
