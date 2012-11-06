@@ -5,7 +5,7 @@ import Test.QueueCircuits
 import Test.Demo
 import Test.DimacsDemo
 
-main = Test.QueueCircuits.runTests
+main = Test.Array.countData
 
 {-
 main = do Test.DimacsDemo.runTests

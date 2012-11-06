@@ -152,6 +152,7 @@ byAddr a@(adA,_) b@(adB,_) = do c <- greaterThan adA adB
 
 ------------------------------------ Bad versions ----------------------------
 
+-- TODO change bad* prefix to something more neutral
 badReadArray :: Swappable a => NetArray a -> [NetUInt] -> NetWriter [a]
 badReadArray arr inds = forM inds (\i -> muxList i (elems arr))
 
