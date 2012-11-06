@@ -31,9 +31,9 @@ wideAngleCase algo theta thMax expected = do
   where thetaWidth = valueSize thMax
       
 burnWideAngleTest theta thMax expected = do
-  writeTestCase "wideAngleTest" 
+  writeTestCase ("wideAngleTest" ++ show (length theta))
     (wideAngleCase Demo.wideAngle theta thMax expected) fst snd
-  writeTestCase "wideAngleNaiveTest" 
+  writeTestCase ("wideAngleNaiveTest" ++ show (length theta))
     (wideAngleCase Demo.wideAngleNaive theta thMax expected) fst snd
 
 runWideAngleTests = forM_ ns $ \n -> do
@@ -73,12 +73,13 @@ rectangleInHistogramCase hs hwidth expected = do
 
 
 burnRectangleInHistogramCase hs hwidth expected =
-  writeTestCase "rectangleInHistogram"
+  writeTestCase ("rectangleInHistogram" ++ show (length hs))
     (rectangleInHistogramCase hs hwidth expected) fst snd
 
-runRectangleInHistogramTests = do
-  (hs,exp) <- getStdRandom (randomRectangleInHistogram 200 255)
-  burnRectangleInHistogramCase hs 8 exp
+runRectangleInHistogramTests = 
+  forM_ [128,256,512,1024] $ \n -> do
+    (hs,exp) <- getStdRandom (randomRectangleInHistogram n 255)
+    burnRectangleInHistogramCase hs 8 exp
 
 runTests = do runWideAngleTests
               runRectangleInHistogramTests
