@@ -56,6 +56,7 @@ module Circuit.NetList.Gcil
 , gcilOutBits
 , ignoreAndsUsed
 , burnTestCase
+, countGates
 ) where
 
 import Control.Monad.State.Strict
@@ -93,6 +94,22 @@ burnTestCase caseName bytecode = do
       EndIgnoreStats     -> writeIORef counting True
   ac <- readIORef andCount
   putStrLn $ caseName ++ " " ++ show ac
+
+countGates :: [GcilInstr] -> (Int,Int)
+countGates bytecode = sums 0 0 filterbyte where
+  sums ts as [] = (ts,as)
+  sums ts as (h:t) = ts' `seq` as' `seq` sums ts' as' t where
+    ts' = onlynet totalCost h + ts
+    as' = onlynet andCost h + as
+  onlynet f (CalcInstr x) = f x
+  onlynet _ _ = 0
+  filterbyte = filterIgnored True bytecode
+  filterIgnored _    []                      = []
+  filterIgnored True (StartIgnoreStats:tail) = filterIgnored False tail
+  filterIgnored True (h:tail)                = h:filterIgnored True tail
+  filterIgnored False (EndIgnoreStats:tail)  = filterIgnored True tail
+  filterIgnored False (_:tail)               = filterIgnored False tail
+  
 
 type GcilMonad = WriterT [GcilInstr] (State Int)
 gcilList :: GcilMonad a -> [GcilInstr]
@@ -142,6 +159,25 @@ opcodeAndCost (UnOp BitNot _) = 0
 opcodeAndCost (ConcatOp _) = 0
 opcodeAndCost (SelectOp _ _ _) = 0
 opcodeAndCost (ExtendOp _ _ _) = 0
+
+totalCost (OutputBits _) = 0
+totalCost (AssignResult _ op) = opcodeTotalCost op
+totalCost (DeallocBits _) = 0
+
+opcodeTotalCost (BinOp BitAdd x _) = 5*bitWidth x
+opcodeTotalCost (BinOp BitSub x _) = 5*bitWidth x
+opcodeTotalCost (BinOp BitOr  x _) = bitWidth x
+opcodeTotalCost (BinOp BitAnd x _) = bitWidth x
+opcodeTotalCost (BinOp BitXor x _) = bitWidth x
+opcodeTotalCost (BinOp BitEq  x _) = 2*bitWidth x - 1
+opcodeTotalCost (BinOp BitGt  x _) = 4*bitWidth x
+opcodeTotalCost (UnOp BitNeg x)       = 5*bitWidth x
+opcodeTotalCost (UnOp BitAny x)       = bitWidth x - 1
+opcodeTotalCost (UnOp BitParityOdd x) = bitWidth x - 1
+opcodeTotalCost (UnOp BitNot _)       = 0
+opcodeTotalCost (ConcatOp _)     = 0
+opcodeTotalCost (SelectOp _ _ _) = 0
+opcodeTotalCost (ExtendOp _ _ _) = 0
 
 idName v = 't':show v
 inName = idName.varId

@@ -5,9 +5,13 @@ import Test.QueueCircuits
 import Test.Demo
 import Test.DimacsDemo
 
+main = Test.QueueCircuits.runTests
+
+{-
 main = do Test.DimacsDemo.runTests
           Test.Array.runTests
           Test.StackCircuits.runTests
           Test.StackDimacs.runTests
           Test.QueueCircuits.runTests
           Test.Demo.runTests
+          -}

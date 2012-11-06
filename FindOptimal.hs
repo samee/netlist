@@ -182,5 +182,6 @@ activeSorter = shellSortCount (fst $ head $ reads "activeSorter" :: StdGen)
 --activeSorter = batcherSortCount
 --main = listNaiveBatchCost 1000 16
 
-main = do putStrLn $ show $ batcherSortCount 256
-          putStrLn $ show $ activeSorter 256
+main = forM_ [1..1200] $ \i ->
+          putStrLn $ show i ++ " " ++ show (batcherSortCount i)
+                   ++ " " ++ show (shellSortCount (mkStdGen 2315) i)

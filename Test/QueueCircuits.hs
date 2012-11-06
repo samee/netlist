@@ -2,6 +2,7 @@ module Test.QueueCircuits (runTests) where
 
 import Control.Monad
 import Control.Monad.State
+import Data.Bits
 import Data.Sequence (Seq,ViewR((:>)),(<|))
 import qualified Data.Sequence as S
 import Debug.Trace
@@ -13,6 +14,7 @@ import Circuit.NetList
 import Circuit.NetList.Gcil as Gc
 import Circuit.Queue as Gq
 --import Test.Gcil (writeTestCase)
+import Util
 
 data QueueAction = QueuePush Int | QueuePop Int deriving Show
 
@@ -53,8 +55,6 @@ compileActs maxQLength acts = do
   gcilOutBits res -- =<< liftNet (bitify res)
   where
   (pushVals,popVals) = splitPushPop acts
-  pushC = length pushVals
-  popC = length popVals
 
   cktMain :: [NetUInt] -> [NetUInt] -> [QueueAction] -> Queue NetUInt
           -> GcilMonad NetBool
@@ -75,7 +75,74 @@ splitPushPop [] = ([],[])
 splitPushPop (QueuePush x: l) = (x:a,b) where (a,b) = splitPushPop l
 splitPushPop (QueuePop  x: l) = (a,x:b) where (a,b) = splitPushPop l
 
+ceilPowerOf2 x | isPowerOf2 x = x
+               | otherwise = x + (x .&. ( -x ))
+
+data SimpleQueue a = SimpleQueue { sqContents :: [a]
+                                 , sqHead :: NetUInt
+                                 , sqTail :: NetUInt
+                                 , sqMaxLen :: Int
+                                 }
+
+simpleEmpty maxl = SimpleQueue { sqContents = []
+                               , sqHead = constIntW w 0
+                               , sqTail = constIntW w 0
+                               , sqMaxLen = ceilPowerOf2 maxl
+                               } where
+                               w = indexSize maxl
+
+sqPush c v q = do
+  let oldlen = length $ sqContents q
+      (newlen,oldbuff) = if oldlen == sqMaxLen q
+                           then (oldlen,sqContents q) 
+                           else (oldlen+1,sqContents q ++ [v])
+  dec <- decoderREn c 0 newlen (sqTail q)
+  newbuff <- forM (zip dec $ oldbuff) $ \(d,old) -> mux d old v
+  newtail <- condAdd c (sqTail q) (constInt 1)
+  return $ q { sqContents = newbuff, sqTail = newtail }
+
+sqPop c q = do
+  newhead <- condAdd c (sqHead q) (constInt 1)
+  return $ q { sqHead = newhead }
+
+sqFront q = muxList (sqHead q) (sqContents q)
+
+-- TODO did I ever tell you how I hate code duplication?
+queueCount maxn acts = countGates $ gcilList $ compileActs maxn acts
+naiveCount maxn acts = countGates $ gcilList $ do
+  pushVars <- mapM (testInt ServerSide intW) pushVals
+  popVars  <- mapM (testInt ClientSide intW) popVals
+  cktMain pushVars popVars acts (simpleEmpty maxn)
+  where
+  (pushVals,popVals) = splitPushPop acts
+
+  cktMain :: [NetUInt] -> [NetUInt] -> [QueueAction] -> SimpleQueue NetUInt
+          -> GcilMonad ()
+
+  cktMain [] [] [] _  = return ()
+  cktMain (x:a) b (QueuePush _:acts) q = do
+    q' <- liftNet $ sqPush netTrue x q
+    cktMain a b acts q'
+  cktMain a (x:b) (QueuePop _:acts) q = do
+    mb <- liftNet $ sqFront q
+    q' <- liftNet $ sqPop netTrue q
+    cktMain a b acts q'
+
 qsize = 200
 
+{-
 runTests = getStdRandom (randomTest 2000 qsize) 
        >>= burnTestCase "queuetest" . gcilList . compileActs qsize
+       -}
+
+runTests = do putStrLn "-------------- Queue sizes ------------------"
+              putStrLn "n opcount Naive(total,and) MyQueue(total,and)"
+              forM_ [16,32,64,128,256,512,1024,2048] $ \maxl ->
+                forM_ [maxl `div` 2, maxl, maxl*2] $ \opcount -> do
+                  acts <- getStdRandom $ randomTest opcount maxl
+                  putStrLn $ show maxl ++ "  " ++ show opcount ++ "  "
+                          ++ show (naiveCount maxl acts) ++ "  " 
+                          ++ show (queueCount maxl acts)
+
+
+

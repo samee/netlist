@@ -7,18 +7,20 @@ import System.Random
 import Circuit.NetList as N
 import Circuit.NetList.Gcil as NG
 import qualified Circuit.Stack as S
+import Util
 --import Test.Gcil
 
 itemWidth = 8
-expn = 100
-maxn = 2*expn
+-- expn = 100
+-- maxn = 2*expn
 
 data StackTestAction =  StackPush Int -- value to be pushed
                       | StackPop Int  -- expected value
                       deriving Show
 
-randomTest :: RandomGen g => g -> ([StackTestAction],g)
-randomTest rgen = aux opcount 0 [] rgen where
+randomTest :: RandomGen g => Int -> Int -> g -> ((Int,[StackTestAction]),g)
+randomTest opcount expn rgen = ((maxn,acts),rgen') where
+  (acts,rgen') =  aux opcount 0 [] rgen
   aux 0 _ _ rgen = ([],rgen)
   aux opcount len stk rgen = flip runState rgen $ do
     rlen <- state $ randomR (0,maxn)
@@ -34,21 +36,19 @@ randomTest rgen = aux opcount 0 [] rgen where
       return $ map StackPop exp ++ ops
 
   vrange = (0,2^itemWidth-1)
-  opcount = 20*expn
+  maxn = 2*expn
+  -- opcount = 20*expn
 
 splitPushPop [] = ([],[])
 splitPushPop (StackPush x:l) = (x:a,b) where (a,b) = splitPushPop l
 splitPushPop (StackPop  x:l) = (a,x:b) where (a,b) = splitPushPop l
 
--- name == "stacktest" TODO runTests
-gcRandomTest acts = do
+gcRandomTest (maxn,acts) = do
   pushVars <- mapM (testInt ServerSide itemWidth) pushVals
   popVars  <- mapM (testInt ClientSide itemWidth) popVals
   cktMain pushVars popVars acts netTrue (S.capLength maxn S.empty)
   where
   (pushVals, popVals) = splitPushPop acts
-  pushC = length pushVals
-  popC = length popVals
 
   cktMain :: [NetUInt] -> [NetUInt] -> [StackTestAction] 
           -> NetBool -> S.Stack NetUInt -> GcilMonad ()
@@ -73,6 +73,64 @@ testRandomTest acts = aux [] acts where
   aux (t:stk) (StackPop exp:acts) = (t==exp) && aux stk acts
   aux stk (StackPush x:acts) = aux (x:stk) acts
 
+
+data SimpleStack a = SimpleStack { ssContent :: [a]
+                                 , ssTopPtr :: NetUInt
+                                 , ssMaxLen :: Int
+                                 }
+
+ssEmpty maxl = SimpleStack { ssContent = []
+                           , ssTopPtr = constIntW (indexSize maxl) 0
+                           , ssMaxLen = maxl
+                           }
+ssPush c v stk = do
+  let oldlen = length (ssContent stk)
+      (newlen,oldbuff) = if ssMaxLen stk == oldlen
+                           then (oldlen,ssContent stk)
+                           else (oldlen+1,ssContent stk++[v])
+  dec <- decoderREn c 0 newlen (ssTopPtr stk)
+  newbuff <- forM (zip dec $ oldbuff) $ \(d,old) -> mux d old v
+  top <- condAdd c (ssTopPtr stk) (constInt 1)
+  return $ stk { ssContent = newbuff, ssTopPtr = top }
+
+ssPop c stk = do
+  top <- condSub c (ssTopPtr stk) (constInt 1)
+  return $ stk { ssTopPtr = top }
+
+ssTop stk = muxList (ssTopPtr stk) (ssContent stk)
+
+stackCount maxn acts = countGates $ gcilList $ gcRandomTest (maxn,acts)
+naiveCount maxn acts = countGates $ gcilList $ do
+  pushVars <- mapM (testInt ServerSide itemWidth) pushVals
+  popVars  <- mapM (testInt ClientSide itemWidth) popVals
+  cktMain pushVars popVars acts (ssEmpty maxn)
+  where
+  (pushVals, popVals) = splitPushPop acts
+
+  cktMain :: [NetUInt] -> [NetUInt] -> [StackTestAction] -> SimpleStack NetUInt
+          -> GcilMonad ()
+  cktMain [] [] [] skt = return ()
+  cktMain (var:push) pop (StackPush _:acts) stk = do
+    stk <- liftNet $ ssPush N.netTrue var stk
+    cktMain push pop acts stk
+  cktMain push (var:pop) (StackPop _:acts) stk = do
+    mb <- liftNet $ ssTop stk
+    stk <- liftNet $ ssPop N.netTrue stk
+    cktMain push pop acts stk
+
+
 runTests :: IO ()
-runTests = do acts <- getStdRandom randomTest
-              burnTestCase "stacktest" $ gcilList $ gcRandomTest acts
+{-
+runTests = do (maxn,acts) <- getStdRandom $ randomTest 2000 100
+              burnTestCase "stacktest" $ gcilList $ gcRandomTest (maxn,acts)
+              -}
+runTests = do putStrLn "---------- Stack sizes ---------------"
+              putStrLn "stackSize  opCount  Naive  MyStack"
+              forM_ [8,16,32,64,128,256,512,1024] $ \expn ->
+                forM_ [expn, expn*2, expn*4] $ \opcount -> do
+                  (maxn,acts) <- getStdRandom $ randomTest opcount expn
+                  putStrLn $ show maxn ++ "  " ++ show opcount ++ "  "
+                          ++ show (naiveCount maxn acts) ++ "  " 
+                          ++ show (stackCount maxn acts)
+
+
