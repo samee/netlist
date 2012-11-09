@@ -54,6 +54,7 @@ applyOps opSpecs arr ops = do
     return ((acc,arr),result)) (foldInit opSpecs,arr) opsBlockized
   return (arr,concat resBlockized,foldend)
 
+-- TODO this needs to improve with batcher's unequal merge capabilities
 -- Well, not exactly half --- you get to specify a range [a,b) which is assumed
 -- to be already sorted. Note that the right endpoint of the range is exclusive
 sortHalf cmpSwap a b l | (a>b)          = undefined
