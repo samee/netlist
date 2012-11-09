@@ -30,6 +30,17 @@ batcherSort cmpSwap l = do
   h2 <- batcherSort cmpSwap h2
   batcherMerge cmpSwap h1 h2
 
+batcherMerge cmpSwap a b = aux $ a++b where
+  aux [] = return []
+  aux [x] = return [x]
+  aux l = do
+    le' <- aux le
+    lo' <- aux lo
+    batcherSwap cmpSwap $ unsplitOddEven le' lo'
+    where
+    (le,lo) = splitOddEven l
+
+    {-
 batcherMerge _ [] b = return b
 batcherMerge cmpSwap [a] [b] = do (a,b) <- cmpSwap a b; return [a,b]
 batcherMerge cmpSwap a b = do
@@ -37,6 +48,7 @@ batcherMerge cmpSwap a b = do
   ce <- batcherMerge cmpSwap ae be
   co <- batcherMerge cmpSwap ao bo
   batcherSwap cmpSwap (unsplitOddEven ce co)
+  -}
 
 batcherSwap _ []  = return []
 batcherSwap _ [x] = return [x]
