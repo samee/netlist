@@ -83,3 +83,5 @@ runRectangleInHistogramTests =
 
 runTests = do runWideAngleTests
               runRectangleInHistogramTests
+
+
