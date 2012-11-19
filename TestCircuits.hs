@@ -3,9 +3,10 @@ import Test.StackCircuits
 import Test.StackDimacs
 import Test.QueueCircuits
 import Test.Demo
+import Test.Demo2
 import Test.DimacsDemo
 
-main = Test.Demo.runTests
+main = Test.Demo2.runTests
 
 {-
 main = do Test.DimacsDemo.runTests
