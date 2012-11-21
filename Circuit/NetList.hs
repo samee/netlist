@@ -23,6 +23,8 @@ module Circuit.NetList
 , shiftLeft
 , NetOrd (chainGreaterThan, greaterThan)
 , lessThan
+, netMin, netMax
+, cmpSwap
 , NetUInt
 , NetSInt
 , NetBits(..), BitSym(..)
@@ -214,6 +216,15 @@ class NetOrd a where
 
 lessThan :: NetOrd a => a -> a -> NetWriter NetBool
 lessThan = flip greaterThan
+
+netMax a b = do c <- greaterThan a b
+                mux c b a
+
+netMin a b = do c <- greaterThan a b
+                mux c a b
+
+cmpSwap a b = do c <- greaterThan a b
+                 condSwap c a b
 
 newtype NetUInt = NetUInt { uIntBits :: NetBits }
 newtype NetSInt = NetSInt { sIntBits :: NetBits }

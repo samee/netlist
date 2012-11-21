@@ -86,8 +86,6 @@ adjust stk  | nadj      = stk { noadjust = False }
               else if bh >= 4 then drop 2 (buff stk) ++ [Nothing,Nothing]
               else buff stk
   
--- Write up Circuit.Interpreted.Stack.*
--- test it. Refactor? Circuit.Gcil.Stack
 testStack :: RandomGen g => g -> (Bool,g)
 testStack rgen = flip runState rgen $ do
   n   <- state $ randomR (10,100)

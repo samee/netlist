@@ -8,12 +8,9 @@ import qualified Data.Sequence as S
 import Debug.Trace
 import System.Random
 
---import Circuit.Gcil.Compiler as Gc
---import Circuit.Gcil.Queue as Gq
 import Circuit.NetList
 import Circuit.NetList.Gcil as Gc
 import Circuit.Queue as Gq
---import Test.Gcil (writeTestCase)
 import Util
 
 data QueueAction = QueuePush Int | QueuePop Int deriving Show

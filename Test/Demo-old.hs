@@ -1,42 +1,23 @@
 module Test.Demo where
 
 import Control.Monad
-import Control.Monad.Identity
 import Control.Monad.State
 import Data.List
-import Debug.Trace
 import System.Random
 
-import Circuit.NetList
-import Circuit.NetList.Gcil
-import qualified Circuit.Sorter as Sort
-import Test.DemoCircuits
---import Test.Gcil
+import Circuit.Gcil.Compiler
+import Circuit.Gcil.Demo as Demo
+import Test.Gcil
 import Util
 
 -- Use the naive O(n^2) method
 localWideAngle thMax l = maximum [f a b | a<-l, b<-l, a<=b] where
-  f a b = min (b-a) (thMax-b+a)
+  f a b = Prelude.min (b-a) (thMax-b+a)
 
 randomWideAngleTest thMax n rgen = flip runState rgen $ do
-  l1 <- replicateM half $ state $ randomR (0,thMax-1)
-  l2 <- replicateM (n-half) $ state $ randomR (0,thMax-1)
-  return (sort l1,sort l2,thMax)
-  where half = n `div` 2
+  l <- replicateM n $ state $ randomR (0,thMax-1)
+  return (sort l,localWideAngle thMax l)
 
-wideAngleCase algo (theta1,theta2,thMax) = do
-  theta1V <- mapM (testInt ServerSide thetaWidth) theta1
-  theta2V <- mapM (testInt ClientSide thetaWidth) theta2
-  result <- liftNet $ do
-    theta <- Sort.merge cmpSwap theta1V theta2V
-    r <- algo theta (constInt thMax)
-    newOutput =<< bitify r
-    return r
-  gcilOutBits <=< ignoreAndsUsed $ liftNet $ equal result (constInt expected)
-  where expected = traceme $ localWideAngle thMax $ theta1++theta2
-        thetaWidth = valueSize thMax
-
-{-
 wideAngleCase algo theta thMax expected = do
   thetaVars   <- replicateM (length theta) (newInput thetaWidth 1)
   thMaxVar    <- newInput thetaWidth 1
@@ -103,14 +84,4 @@ runRectangleInHistogramTests =
 runTests = do runWideAngleTests
               runRectangleInHistogramTests
 
--}
 
-traceMerge x@(l1,l2,_) = traceShow (runIdentity $ Sort.merge cx l1 l2) x
-  where 
-  cx a b = return $ if a<b then (a,b) else (b,a)
-
-runTests = do setStdGen (mkStdGen 4)
-              pack <- getStdRandom (randomWideAngleTest (2^10) 30)
-              --let pack = ([0,2,5,9,13,30,60],[1,8,9,9,15,50,50],64)
-              burnTestCase "wideAngle128" $ gcilList 
-                  $ wideAngleCase wideAngle $ traceMerge pack
