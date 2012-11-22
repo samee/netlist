@@ -11,6 +11,16 @@ import qualified Circuit.Queue as Nq
 import qualified Circuit.Stack as Ns
 import Util
 
+-- TODO move this to NetList.hs if it is useful
+
+type NetCondMod a = NetBool -> a -> NetWriter a
+betterMaybe :: NetCondMod a -> (b -> NetCondMod a) 
+            -> NetMaybe b -> NetCondMod a
+betterMaybe nothCase justCase mb en piped 
+  | knownNothing mb = nothCase en piped
+  | otherwise = do
+    (jen,nen) <- decoderUnit en =<< netIsNothing mb
+    justCase (netFromJust mb) jen =<< nothCase nen piped
 
 -- Given a set of points on the circumference of a circle,
 -- find the widest angle made by them at the center. All angles are
@@ -30,48 +40,58 @@ while(i<n)
     i++
 }
 
-Mapping: theta[j+1..i]       -> inRange (Queue, possibly empty)
-         f theta[i] theta[j] -> curSep
-         theta[i]            -> curi    (same as last item pushed in inRange)
-         theta[i+1..n-1]     -> unseen  (Queue, possibly empty)
+Mapping: theta[j+1..i]  -> inRange (Queue, possibly empty)
+         theta[i..n-1]  -> unseen  (Stack, possibly empty)
+         theta[j]       -> curj
 -}
+
 
 wideAngle :: [NetUInt] -> NetUInt -> NetWriter NetUInt
 wideAngle theta maxTheta = if n <= 1
   then return $ constInt 0
   else do
-    let result  = constIntW (intWidth maxTheta) 0
-        unseen  = Nq.fromList $ tail $ tail theta
-        inRange = Nq.fromList [theta!!1]
-        curi    = theta!!1
-    curSep <- modDiff maxTheta (theta!!0) (theta!!1)
-    (result,_,_,_) <- foldM (\(result,inRange,curSep,curi,unseen) _ -> do
-      result <- netMax result curSep
-      nextmb <- Nq.front inRange
-      (c,curSepj) <- netCaseMaybe (\mb -> case mb of
-        Nothing -> return (netFalse,curSep)
-        Just nextj -> do nextSep <- modDiff maxTheta nextj curi
-                         c <- netNot =<< greaterThan curSep nextSep
-                         return (c,nextSep)
-        ) nextmb
-      mbnexti <- Nq.front unseen
-      notdone <- netNot =<< netIsNothing mbnexti
-      -- TODO fix fromJust if known nothing
-      tb <- netAnd notdone c
-      fb <- netXor notdone tb
-      inRange <- Nq.condPop tb inRange
-      curSep  <- mux tb curSep curSepj
-      inRange <- Nq.condPush fb (netFromJust mbnexti) inRange
-      curSep  <- mux fb curSep =<< modDiff maxTheta 
-      {-
-      if c && 
-      -}
-      return (result,inRange,curSep,curi,unseen)) [1..2*n]
+    let inRange = Nq.fromList [theta!!1]
+        unseen  = Ns.fromList $ tail theta
+        curj    = theta!!0
+    (result,_,_,_) <- foldM (\loopVars@(_,_,unseen,_) _ -> do
+      mb <- Ns.top unseen
+      betterMaybe 
+        (const return)
+        (\curi en (result,inRange,unseen,curj) -> do
+          curSep <- modDiff maxTheta curj curi
+          updres <- netAnd en =<< greaterThan curSep result
+          result <- mux updres result curSep
+          mb <- Nq.front inRange
+          (incI,(inRange,curj)) <- betterMaybe 
+            (\en (incI,lv) -> do
+              incI <- netOr incI en
+              return (incI,lv))
+            (\nxtj en (incI,(inRange,curj)) -> do
+              nxtSep  <- modDiff maxTheta nxtj curi
+              wider   <- greaterThan nxtSep curSep
+              incJ    <- netAnd en wider
+              incI    <- netOr incI =<< netXor en incJ
+              curj    <- mux incJ curj nxtj
+              inRange <- Nq.condPop incJ inRange
+              return (incI,(inRange,curj)))
+            mb en (netFalse,(inRange,curj))
+          unseen <- Ns.condPop incI unseen
+          mb <- Ns.top unseen
+          inRange <- betterMaybe
+            (const return)
+            (\nxti en inRange -> Nq.condPush en nxti inRange)
+            mb incI inRange
+          return (result,inRange,unseen,curj))
+        mb netTrue loopVars)
+        (constIntW (intWidth maxTheta) 0,inRange,unseen,curj) [0..2*n-1]
+    return result
+  where
+  n = length theta
 
 
 
 
-
+{-
     let result  = constIntW (intWidth maxTheta) 0
         unseen  = Nq.fromList $ tail theta
         inRange = Nq.fromList [theta!!1]
@@ -109,6 +129,7 @@ wideAngle theta maxTheta = if n <= 1
   where
   n = length theta
   (firstHalf,secondHalf) = splitAt (n`div`2) theta
+  -}
 
 -- modDiff m a b assumes a <= b < maxtheta
 modDiff m a b = do 

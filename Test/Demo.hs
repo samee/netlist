@@ -3,6 +3,7 @@ module Test.Demo where
 import Control.Monad
 import Control.Monad.Identity
 import Control.Monad.State
+import qualified Data.Array as A
 import Data.List
 import Debug.Trace
 import System.Random
@@ -17,6 +18,17 @@ import Util
 -- Use the naive O(n^2) method
 localWideAngle thMax l = maximum [f a b | a<-l, b<-l, a<=b] where
   f a b = min (b-a) (thMax-b+a)
+
+localWideAngle2 thMax l = aux 0 0 1 where
+  aux result j i | i>=n = result
+                 | j<i && f j i <= f (j+1) i = aux result' (j+1) i
+                 | otherwise = aux result' j (i+1)
+    where
+    result' = max result $ f j i
+  n = length l
+  f j i = fixup $ (arr A.! i) - (arr A.! j)
+  arr = A.listArray (0,n-1) $ sort l
+  fixup x = min x (thMax-x)
 
 randomWideAngleTest thMax n rgen = flip runState rgen $ do
   l1 <- replicateM half $ state $ randomR (0,thMax-1)
@@ -33,7 +45,7 @@ wideAngleCase algo (theta1,theta2,thMax) = do
     newOutput =<< bitify r
     return r
   gcilOutBits <=< ignoreAndsUsed $ liftNet $ equal result (constInt expected)
-  where expected = traceme $ localWideAngle thMax $ theta1++theta2
+  where expected = traceme $ localWideAngle2 thMax $ theta1++theta2
         thetaWidth = valueSize thMax
 
 {-
@@ -109,8 +121,7 @@ traceMerge x@(l1,l2,_) = traceShow (runIdentity $ Sort.merge cx l1 l2) x
   where 
   cx a b = return $ if a<b then (a,b) else (b,a)
 
-runTests = do setStdGen (mkStdGen 4)
-              pack <- getStdRandom (randomWideAngleTest (2^10) 30)
-              --let pack = ([0,2,5,9,13,30,60],[1,8,9,9,15,50,50],64)
+runTests = do setStdGen (mkStdGen 1)
+              pack <- getStdRandom (randomWideAngleTest (2^10) 128)
               burnTestCase "wideAngle128" $ gcilList 
                   $ wideAngleCase wideAngle $ traceMerge pack
