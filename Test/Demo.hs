@@ -29,6 +29,8 @@ localWideAngle2 thMax l = aux 0 0 1 where
   f j i = fixup $ (arr A.! i) - (arr A.! j)
   arr = A.listArray (0,n-1) $ sort l
   fixup x = min x (thMax-x)
+  sampleDiff d = traceShow pair d where 
+    pair = head $ [(j,i) | j<-l, i<-l, fixup (i-j) == d]
 
 randomWideAngleTest thMax n rgen = flip runState rgen $ do
   l1 <- replicateM half $ state $ randomR (0,thMax-1)
@@ -45,7 +47,7 @@ wideAngleCase algo (theta1,theta2,thMax) = do
     newOutput =<< bitify r
     return r
   gcilOutBits <=< ignoreAndsUsed $ liftNet $ equal result (constInt expected)
-  where expected = traceme $ localWideAngle2 thMax $ theta1++theta2
+  where expected = localWideAngle2 thMax $ theta1++theta2
         thetaWidth = valueSize thMax
 
 {-
@@ -121,7 +123,6 @@ traceMerge x@(l1,l2,_) = traceShow (runIdentity $ Sort.merge cx l1 l2) x
   where 
   cx a b = return $ if a<b then (a,b) else (b,a)
 
-runTests = do setStdGen (mkStdGen 1)
-              pack <- getStdRandom (randomWideAngleTest (2^10) 128)
+runTests = do pack <- getStdRandom (randomWideAngleTest (2^10) 128)
               burnTestCase "wideAngle128" $ gcilList 
-                  $ wideAngleCase wideAngle $ traceMerge pack
+                  $ wideAngleCase wideAngleNaive pack

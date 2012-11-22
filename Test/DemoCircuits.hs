@@ -59,7 +59,7 @@ wideAngle theta maxTheta = if n <= 1
         (const return)
         (\curi en (result,inRange,unseen,curj) -> do
           curSep <- modDiff maxTheta curj curi
-          updres <- netAnd en =<< greaterThan curSep result
+          updres <- netAnd en =<< curSep `greaterThan` result
           result <- mux updres result curSep
           mb <- Nq.front inRange
           (incI,(inRange,curj)) <- betterMaybe 
@@ -68,7 +68,7 @@ wideAngle theta maxTheta = if n <= 1
               return (incI,lv))
             (\nxtj en (incI,(inRange,curj)) -> do
               nxtSep  <- modDiff maxTheta nxtj curi
-              wider   <- greaterThan nxtSep curSep
+              wider   <- netNot =<< greaterThan curSep nxtSep
               incJ    <- netAnd en wider
               incI    <- netOr incI =<< netXor en incJ
               curj    <- mux incJ curj nxtj
@@ -146,6 +146,7 @@ foldMWithBreak f init (h:t) = do mb <- f init h
                                             Just x  -> foldMWithBreak f x t
 
 -- Naive O(n^2) comparison
+wideAngleNaive :: [NetUInt] -> NetUInt -> NetWriter NetUInt
 wideAngleNaive theta maxTheta = join $ fold1M (liftM2 netMax) l
   where
   allPair = [(a,b) | (a,bs) <- zip theta (tail $ tails theta), b <- bs]
