@@ -1,4 +1,4 @@
-module Test.QueueCircuits (runTests) where
+module Test.QueueGcil (runTests) where
 
 import Control.Monad
 import Control.Monad.State

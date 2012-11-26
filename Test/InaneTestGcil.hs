@@ -1,4 +1,4 @@
-module Test.InaneTest where
+module Test.InaneTestGcil where
 
 import Control.Monad
 import Control.Monad.Writer

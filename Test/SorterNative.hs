@@ -1,4 +1,4 @@
-module Test.Sorter where
+module Test.SorterNative where
 import Control.Monad.Identity
 import Debug.Trace
 import System.Random

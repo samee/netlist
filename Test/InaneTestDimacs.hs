@@ -1,4 +1,4 @@
-module Test.DimacsInaneTest where
+module Test.InaneTestDimacs where
 
 import Control.Monad
 

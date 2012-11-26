@@ -1,4 +1,4 @@
-module Test.Array where
+module Test.ArrayGcil where
 
 import Control.Monad.Identity
 import Control.Monad.State.Strict

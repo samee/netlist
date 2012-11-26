@@ -1,4 +1,5 @@
-module Test.StackCircuits where
+-- TODO separate this into regression and benchmark test
+module Test.StackGcil where
 
 import Control.Monad
 import Control.Monad.State
