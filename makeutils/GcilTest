@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# Right now, this depends on runopt, so won't work on GCparser as packaged FIXME
+GCPARSER_PATH=$1
+CIRCUIT_PATH=tmp
+LOGFILE=$2
+
+TESTLIST=(`grep -o 'test case: [^.]\+\.' $LOGFILE \
+        | sed -r 's/^[^:]+: ([^.]+)./\1/'`)
+SUCCESSLIST=(`grep -o 'test case: [^.]\+\.' $LOGFILE \
+        | sed -r 's/^.*successVar: //'`)
+n=${#TESTLIST[*]}
+
+for ((i=0;i<n;i++)); do
+  test=${TESTLIST[i]}
+  succ=${TESTLIST[i]}
+  echo "$test" 
+  echo "$test:" >> $LOGFILE
+  DIR=`pwd`
+  cd $GCPARSER_PATH
+  ./runopt $DIR/$CIRCUIT_PATH/$test.cir $DIR/$CIRCUIT_PATH/$test-server.in \
+           $DIR/$CIRCUIT_PATH/$test-client.in 2>> $DIR/$LOGFILE
+  if grep "$succ = 1" results/siserverout ; then
+    exit 1
+  fi
+  cd $DIR
+done
+

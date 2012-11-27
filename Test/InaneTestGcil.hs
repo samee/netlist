@@ -19,8 +19,7 @@ gcTheOp v = do
   x <- testInt ServerSide 5 v
   y'<- testInt ClientSide 6 (theOpLocal v)
   y <- liftNet $ theOp x
-  eq <- ignoreAndsUsed $ liftNet $ equal y y'
-  gcilOutBits eq
+  ignoreAndsUsed $ liftNet $ equal y y'
 
 theLittleJohn :: NetUInt -> NetWriter NetUInt
 theLittleJohn v = do wz <- wideZ; foldM addIfSmall wz [1..2^w] where
@@ -35,8 +34,7 @@ gcTheLittleJohn x = do
   v <- testInt ServerSide 18 x
   y'<- testInt ClientSide (2*18) (theLittleJohnLocal x)
   y <- liftNet $ theLittleJohn v
-  eq <- ignoreAndsUsed $ liftNet $ equal y y'
-  gcilOutBits eq
+  ignoreAndsUsed $ liftNet $ equal y y'
 
-runTests = do burnTestCase "inaneCase" $ gcilList $ gcTheOp 3
-              burnTestCase "littleJohn" $ gcilList $ gcTheLittleJohn 20000
+runTests = do burnTestCase "inaneCase" $ gcTheOp 3
+              burnTestCase "littleJohn" $ gcTheLittleJohn 20000

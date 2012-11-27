@@ -6,4 +6,5 @@ TestCircuits.hs
 bin/
 gcilouts/
 dimacsOut/
+tmp/
 *.swp

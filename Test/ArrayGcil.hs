@@ -29,7 +29,7 @@ type Modify a = CA.NetArray a -> [(NetUInt,a)] -> NetWriter (CA.NetArray a)
 type ManualModify a = [a] -> [(Int,a)] -> [a]
 
 modifyTest :: Modify NetUInt -> ManualModify Int -> [Int] -> [(Int,Int)]
-              -> GcilMonad()
+           -> GcilMonad NetBool
 modifyTest modifyBatch modifyManual init cmds = do
   initV <- liftM CA.listArray $ forM init $ testInt ServerSide intW
   cmdV  <- forM cmds $ \(a,v) -> do a <- testInt ClientSide addrLen a
@@ -37,8 +37,7 @@ modifyTest modifyBatch modifyManual init cmds = do
                                     return (a,v)
   arr <- liftNet $ liftM CA.elems $ modifyBatch initV cmdV
   arr'<- return $ map constInt (modifyManual init cmds)
-  ignoreAndsUsed $ liftNet $ 
-    newOutput =<< bitify =<< netAnds =<< forM (zip arr arr') (uncurry equal)
+  ignoreAndsUsed $ liftNet $ netAnds =<< forM (zip arr arr') (uncurry equal)
   where
   addrLen = indexSize (length init)
 
@@ -47,8 +46,7 @@ readBaseTest reader init addrs = do
   addrV <- forM addrs $ testInt ClientSide addrLen
   arr <- liftNet $ readBatch initV addrV
   arr'<- return $ map (constInt.(natarr!)) addrs
-  ignoreAndsUsed $ liftNet $ 
-    newOutput =<< bitify =<< netAnds =<< forM (zip arr arr') (uncurry equal)
+  ignoreAndsUsed $ liftNet $ netAnds =<< forM (zip arr arr') (uncurry equal)
   where
   natarr = listArray (0,length init-1) init
   addrLen = indexSize (length init)
@@ -95,16 +93,13 @@ countData = do
   batchOps badAddTest   addTest   "Add"   initMaker randomWriteCmds
 
 
-runTests = do burnTestCase "smallwrite" $gcilList$ writeTest smallList writeCmd
-              burnTestCase "smallread" $gcilList$ readTest  smallList readAddrs
-              burnTestCase "smalladd" $gcilList$ addTest smallList writeCmd
+runTests = do burnTestCase "smallwrite" $ writeTest smallList writeCmd
+              burnTestCase "smallread"  $ readTest  smallList readAddrs
+              burnTestCase "smalladd"   $ addTest smallList writeCmd
               let n=500; cmdn=500
-              largeList <- getStdRandom $ randomList (2^intW) n
-              writeCmdLots <- getStdRandom $ randomWriteCmds n cmdn
+              largeList     <- getStdRandom $ randomList (2^intW) n
+              writeCmdLots  <- getStdRandom $ randomWriteCmds n cmdn
               readAddrsLots <- getStdRandom $ randomList n cmdn
-              burnTestCase "largewrite" $gcilList
-                $ writeTest largeList writeCmdLots
-              burnTestCase "largeread" $gcilList
-                $ readTest  largeList readAddrsLots
-              burnTestCase "largeadd" $gcilList
-                $ addTest largeList writeCmdLots
+              burnTestCase "largewrite" $ writeTest largeList writeCmdLots
+              burnTestCase "largeread"  $ readTest  largeList readAddrsLots
+              burnTestCase "largeadd"   $ addTest largeList writeCmdLots

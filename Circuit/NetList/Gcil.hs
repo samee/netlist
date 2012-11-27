@@ -77,8 +77,8 @@ data GcilInstr = InputInstr InputSpec
                | StartIgnoreStats
                | EndIgnoreStats
 
-burnTestCase :: String -> [GcilInstr] -> IO ()
-burnTestCase caseName bytecode = do
+burnTestCase :: String -> GcilMonad NetBool -> IO ()
+burnTestCase caseName cktlister = do
   counting <- newIORef True
   andCount <- newIORef 0
   writeCaseFiles caseName $ \cktFile serverInfile clientInfile ->
@@ -93,7 +93,13 @@ burnTestCase caseName bytecode = do
       StartIgnoreStats   -> writeIORef counting False
       EndIgnoreStats     -> writeIORef counting True
   ac <- readIORef andCount
-  putStrLn $ caseName ++ " " ++ show ac
+  -- makeutils/GcilTest depends on this exact string output
+  putStrLn $ "Created Gcil test case: " ++ caseName ++ ". " ++
+             "ANDs: " ++ show ac ++ ". successVar: " ++ idName successId
+  where
+  addOut = do a <- cktlister
+              liftNet $ newOutput =<< bitify a
+  (successId,bytecode) = runGcilMonad addOut
 
 countGates :: [GcilInstr] -> (Int,Int)
 countGates bytecode = sums 0 0 filterbyte where
@@ -114,6 +120,9 @@ countGates bytecode = sums 0 0 filterbyte where
 type GcilMonad = WriterT [GcilInstr] (State Int)
 gcilList :: GcilMonad a -> [GcilInstr]
 gcilList ckt = evalState (execWriterT ckt) 1
+
+runGcilMonad :: GcilMonad a -> (a,[GcilInstr])
+runGcilMonad ckt = evalState (runWriterT ckt) 1
 
 gcilOutBits x = liftNet $ newOutput =<< bitify x
 
@@ -219,7 +228,7 @@ uopStr x = case x of  BitNot -> "not"
                       BitAny -> "or"
                       BitParityOdd -> "xor"
 
-destPath = "gcilouts/"
+destPath = "tmp/"
 
 writeCaseFiles caseName f =
   withSuff ".cir" $ \cktf -> 

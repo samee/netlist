@@ -48,8 +48,7 @@ popRandom n q = do
 compileActs maxQLength acts = do
   pushVars <- mapM (testInt ServerSide intW) pushVals
   popVars  <- mapM (testInt ClientSide intW) popVals
-  res <- cktMain pushVars popVars acts $ Gq.capLength maxQLength Gq.empty
-  gcilOutBits res -- =<< liftNet (bitify res)
+  cktMain pushVars popVars acts $ Gq.capLength maxQLength Gq.empty
   where
   (pushVals,popVals) = splitPushPop acts
 
@@ -127,11 +126,11 @@ naiveCount maxn acts = countGates $ gcilList $ do
 
 qsize = 200
 
-{-
 runTests = getStdRandom (randomTest 2000 qsize) 
-       >>= burnTestCase "queuetest" . gcilList . compileActs qsize
-       -}
+       >>= burnTestCase "queuetest" . compileActs qsize
 
+-- TODO move this into a benchmark test
+{-
 runTests = do putStrLn "-------------- Queue sizes ------------------"
               putStrLn "n opcount Naive(total,and) MyQueue(total,and)"
               forM_ [16,32,64,128,256,512,1024,2048] $ \maxl ->
@@ -140,6 +139,4 @@ runTests = do putStrLn "-------------- Queue sizes ------------------"
                   putStrLn $ show maxl ++ "  " ++ show opcount ++ "  "
                           ++ show (naiveCount maxl acts) ++ "  " 
                           ++ show (queueCount maxl acts)
-
-
-
+-}

@@ -52,8 +52,8 @@ gcRandomTest (maxn,acts) = do
   (pushVals, popVals) = splitPushPop acts
 
   cktMain :: [NetUInt] -> [NetUInt] -> [StackTestAction] 
-          -> NetBool -> S.Stack NetUInt -> GcilMonad ()
-  cktMain [] [] [] c stk = gcilOutBits c
+          -> NetBool -> S.Stack NetUInt -> GcilMonad NetBool
+  cktMain [] [] [] c stk = return c
   cktMain (var:push) pop (StackPush _:acts) c stk = do
     stk <- liftNet $ S.condPush N.netTrue var stk
     cktMain push pop acts c stk
@@ -120,11 +120,11 @@ naiveCount maxn acts = countGates $ gcilList $ do
     cktMain push pop acts stk
 
 
-runTests :: IO ()
-{-
 runTests = do (maxn,acts) <- getStdRandom $ randomTest 2000 100
-              burnTestCase "stacktest" $ gcilList $ gcRandomTest (maxn,acts)
-              -}
+              burnTestCase "stacktest" $ gcRandomTest (maxn,acts)
+
+-- TODO move this into Benchmark
+{-
 runTests = do putStrLn "---------- Stack sizes ---------------"
               putStrLn "stackSize  opCount  Naive  MyStack"
               forM_ [8,16,32,64,128,256,512,1024] $ \expn ->
@@ -134,4 +134,4 @@ runTests = do putStrLn "---------- Stack sizes ---------------"
                           ++ show (naiveCount maxn acts) ++ "  " 
                           ++ show (stackCount maxn acts)
 
-
+-}

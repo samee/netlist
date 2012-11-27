@@ -157,10 +157,6 @@ addDeallocs out = reverse.aux (S.fromList (map varid out))
     newlyUsed = filter ((`S.notMember` visited).varid) 
               $ filter (isSymbolic) (used instr)
   
-  varid (NetBits { bitValues = VarId id }) = id
-  isSymbolic (NetBits { bitValues = VarId _ }) = True
-  isSymbolic _ = False
-
   used (OutputBits v)     = [v]
   used (AssignResult _ op) = opUsed op
   opUsed (BinOp _ u v)    = [u,v]
@@ -168,6 +164,10 @@ addDeallocs out = reverse.aux (S.fromList (map varid out))
   opUsed (ConcatOp vs)    = vs
   opUsed (SelectOp _ _ v) = [v]
   opUsed (ExtendOp _ _ v) = [v]
+
+varid (NetBits { bitValues = VarId id }) = id
+isSymbolic (NetBits { bitValues = VarId _ }) = True
+isSymbolic _ = False
 
 newtype NetBool = NetBool { boolValue :: BitSym }
 
@@ -366,10 +366,13 @@ muxBits c a b = do x <- bitwiseXor a b
                    bitwiseXor a =<< bitwiseAnd cx x
 
 -- Avoids using bitwiseXor, since that results in constant propagation
+-- Returns the ID of the variable output
+newOutput :: NetBits -> NetWriter Int
 newOutput a = do a' <- if knownConst a 
                           then emit $ BinOp BitXor a (constBits (bitWidth a) 0)
                           else return a
                  tell [OutputBits a']
+                 return $ varid a'
 
 lsb a | bitWidth a == 1 = return . NetBool . bitValues $ a
       | otherwise       = liftM (NetBool . bitValues) $ bitSelect 0 1 a
