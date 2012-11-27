@@ -1,4 +1,4 @@
-module Test.Demo2 where
+module Benchmark.Demo2 where
 
 import Control.Monad
 import Data.List

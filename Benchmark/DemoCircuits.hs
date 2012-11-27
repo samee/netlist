@@ -1,5 +1,5 @@
--- Used only by Test.Demo
-module Test.DemoCircuits where
+-- Used only by Benchmark.Demo
+module Benchmark.DemoCircuits where
 
 import Control.Monad
 import Data.List

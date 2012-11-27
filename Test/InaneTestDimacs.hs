@@ -4,7 +4,7 @@ import Control.Monad
 
 import Circuit.NetList
 import Circuit.NetList.Dimacs
-import Test.InaneTest (theOp,theOpLocal,theLittleJohn)
+import Test.InaneTestGcil (theOp,theOpLocal,theLittleJohn)
 
 dmTheOp res = do
   x <- freshInt 4

@@ -1,4 +1,4 @@
-module Test.DimacsDemo where
+module Benchmark.DimacsDemo where
 
 import Control.Monad
 import Control.Monad.State

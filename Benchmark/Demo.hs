@@ -1,4 +1,4 @@
-module Test.Demo where
+module Benchmark.Demo where
 
 import Control.Monad
 import Control.Monad.Identity
@@ -11,7 +11,7 @@ import System.Random
 import Circuit.NetList
 import Circuit.NetList.Gcil
 import qualified Circuit.Sorter as Sort
-import Test.DemoCircuits
+import Benchmark.DemoCircuits
 --import Test.Gcil
 import Util
 

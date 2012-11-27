@@ -1,4 +1,4 @@
-module Test.Demo where
+module Benchmark.Demo where
 
 import Control.Monad
 import Control.Monad.State
