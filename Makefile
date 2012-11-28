@@ -2,6 +2,7 @@ GHC := ghc
 GHCFLAGS := -O2
 
 GCPARSER_PATH := ../gcparser
+SATSOLVER_BIN := ../lingeling/lingeling
 
 ifneq ($(strip $(PROFILE)),)
   GHCFLAGS_FULL := -prof -auto-all -hisufp_hi -osufp_o -outputdirbin $(GHCFLAGS)
@@ -84,8 +85,17 @@ $(LONG_GCILLOGS): tmp/%-long.log: tmp bin/$(REGRDIR)/%.$(OSUFF)
 	./TestCircuits $*-long >> $@
 	makeutils/GcilTest $(GCPARSER_PATH) $@
 
-$(DIMACSLOGS): tmp/%.log: tmp bin/$(REGRDIR)/%.$(OSUFF) ; # TODO
-$(LONG_DIMACSLOGS): tmp/%-long.log: tmp bin/$(REGRDIR)/%.$(OSUFF) ; # TODO
+$(DIMACSLOGS): tmp/%.log: tmp bin/$(REGRDIR)/%.$(OSUFF)
+	@echo "------- TestCircuits -------" > $@
+	@date >> $@
+	./TestCircuits $* >> $@
+	makeutils/DimacsTest $(SATSOLVER_BIN) $@
+
+$(LONG_DIMACSLOGS): tmp/%-long.log: tmp bin/$(REGRDIR)/%.$(OSUFF)
+	@echo "------- TestCircuits -------" > $@
+	@date >> $@
+	./TestCircuits $*-long >> $@
+	makeutils/DimacsTest $(SATSOLVER_BIN) $@
 
 $(NATIVELOGS): tmp/%.log: tmp bin/$(REGRDIR)/%.$(OSUFF) ; # TODO
 $(LONG_NATIVELOGS): tmp/%-long.log: tmp bin/$(REGRDIR)/%.$(OSUFF) ; # TODO

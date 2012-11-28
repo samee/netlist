@@ -1,0 +1,24 @@
+#!/bin/bash
+
+SATSOLVER_BIN=$1
+QUERY_PATH=tmp
+LOGFILE=$2
+
+TESTLIST=(`grep -o 'test case: [^.]\+\.' $LOGFILE \
+        | sed -r 's/^[^:]+: ([^.]+)./\1/'`)
+STATUSLIST=(`grep 'test case: ' $LOGFILE \
+        | sed -r 's/^.*Expected: //'`)
+n=${#TESTLIST[*]}
+
+for ((i=0;i<n;i++)); do
+  test=${TESTLIST[i]}
+  status=${STATUSLIST[i]}
+  echo "$test" 
+  echo "$test:" >> $LOGFILE
+  time $SATSOLVER_BIN $QUERY_PATH/$test.dimacs \
+    | ./FormatDimacs $QUERY_PATH/$test.tmpl > $test.fmtout 2>> $LOGFILE
+  cat $test.fmtout >> $LOGFILE
+  head -n 1 $test.fmtout | grep -q "^$status" || exit 1
+  rm $test.fmtout
+done
+

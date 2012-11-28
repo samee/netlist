@@ -280,14 +280,16 @@ ripple2 ripple2Unit x y = mapAccumM (uc ripple2Unit) dmZeroVar =<< pairList
 isClause (Clause _) = True
 isClause _ = False
 
-burnSatQuery :: String -> DmMonad () -> IO ()
-burnSatQuery caseName cktmaker
-  = writeCaseFiles caseName $ \qfile tmplfile -> do
-      hPutStrLn qfile $ "p cnf "++show varCount++" "++show clauseCount
-      dimacsList cktmaker $ \bc -> case bc of
-        Clause l -> hPutStrLn qfile $ unwords (map show l)++" 0"
-        ShowString s -> hPutStr tmplfile s
-        ShowBits fmt x -> hPutStr tmplfile $ showBits fmt x
+burnSatQuery :: String -> DmMonad () -> Bool -> IO ()
+burnSatQuery caseName cktmaker satExpected = do
+  writeCaseFiles caseName $ \qfile tmplfile -> do
+    hPutStrLn qfile $ "p cnf "++show varCount++" "++show clauseCount
+    dimacsList cktmaker $ \bc -> case bc of
+      Clause l -> hPutStrLn qfile $ unwords (map show l)++" 0"
+      ShowString s -> hPutStr tmplfile s
+      ShowBits fmt x -> hPutStr tmplfile $ showBits fmt x
+  putStrLn $ "Created DIMACS test case: " ++ caseName ++
+      ". Expected: " ++ (if satExpected then "SAT" else "UNSAT")
   where
   showBits fmt x = tmplFmt fmt++"["++unwords (map show $ reverse x)++"]"
   (varCount,clauseCount) = runCounter cktmaker
@@ -325,4 +327,4 @@ tmplFmt SIntFormat = "$sint"
 tmplFmt BoolFormat = "$bool"
 
 writeCaseFiles caseName f = withSuff ".dimacs" $ \qf -> withSuff ".tmpl" (f qf)
-  where withSuff s = withFile ("dimacsOut/"++caseName++s) WriteMode
+  where withSuff s = withFile ("tmp/"++caseName++s) WriteMode
