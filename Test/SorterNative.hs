@@ -32,8 +32,13 @@ shellSortTestShort = shellSortTest shortList
 
 shortTests = do
   ll <- getStdRandom longList
-  putStrLn $ show batcherSortTestShort ++ "   Test.Sorter.batcherSortTestShort"
-  putStrLn $ show   shellSortTestShort ++ "   Test.Sorter.shellSortTestShort"
-  putStrLn $ show (shellSortTest ll) ++ "   Test.Sorter.shellSortTest"
+  let tests = [(batcherSortTestShort, "batcherSortTestShort")
+              ,(  shellSortTestShort,   "shellSortTestShort")
+              ,(    shellSortTest ll,   "shellSortTest"     )
+              ]
+  status <- liftM and $ forM tests $ \(testproc, testname) -> do
+    putStrLn $ show testproc ++ "   " ++ testname
+    return testproc
+  putStrLn $ "Tests "++if status then "passed" else "failed"
 
-longTests = return () :: IO ()
+longTests = putStrLn "Tests passed"

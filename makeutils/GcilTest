@@ -13,7 +13,7 @@ n=${#TESTLIST[*]}
 for ((i=0;i<n;i++)); do
   test=${TESTLIST[i]}
   succ=${SUCCESSLIST[i]}
-  echo "$test" 
+  echo "  $test"
   echo "$test:" >> $LOGFILE
   DIR=`pwd`
   cd $GCPARSER_PATH
@@ -21,7 +21,7 @@ for ((i=0;i<n;i++)); do
   # Sometimes this leaves Java processes hanging in the background FIXME
   $RDIR/runopt $DIR/$CIRCUIT_PATH/$test.cir $DIR/$CIRCUIT_PATH/$test-server.in \
                $DIR/$CIRCUIT_PATH/$test-client.in 2>> $DIR/$LOGFILE
-  grep -q "$succ = 1" results/siserverout || exit 1
+  grep -q "$succ = 1" results/siserverout || echo "    Test failed"
   cd $DIR
 done
 

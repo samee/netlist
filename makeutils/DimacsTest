@@ -13,12 +13,12 @@ n=${#TESTLIST[*]}
 for ((i=0;i<n;i++)); do
   test=${TESTLIST[i]}
   status=${STATUSLIST[i]}
-  echo "$test" 
+  echo "  $test" 
   echo "$test:" >> $LOGFILE
-  time $SATSOLVER_BIN $QUERY_PATH/$test.dimacs \
-    | ./FormatDimacs $QUERY_PATH/$test.tmpl > $test.fmtout 2>> $LOGFILE
+  (time $SATSOLVER_BIN $QUERY_PATH/$test.dimacs) 2>> $LOGFILE \
+    | ./FormatDimacs $QUERY_PATH/$test.tmpl > $test.fmtout
   cat $test.fmtout >> $LOGFILE
-  head -n 1 $test.fmtout | grep -q "^$status" || exit 1
+  head -n 1 $test.fmtout | grep -q "^$status" || echo "    Test failed"
   rm $test.fmtout
 done
 

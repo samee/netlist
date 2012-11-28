@@ -104,6 +104,6 @@ longTests = do largeList     <- getStdRandom $ randomList (2^intW) n
                burnTestCase "largewrite" $ writeTest largeList writeCmdLots
                burnTestCase "largeread"  $ readTest  largeList readAddrsLots
                -- FIXME
-               -- burnTestCase "largeadd"   $ addTest largeList writeCmdLots
+               burnTestCase "largeadd"   $ addTest largeList writeCmdLots
   where n    = 500
         cmdn = 500

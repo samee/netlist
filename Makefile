@@ -97,5 +97,12 @@ $(LONG_DIMACSLOGS): tmp/%-long.log: tmp bin/$(REGRDIR)/%.$(OSUFF)
 	./TestCircuits $*-long >> $@
 	makeutils/DimacsTest $(SATSOLVER_BIN) $@
 
-$(NATIVELOGS): tmp/%.log: tmp bin/$(REGRDIR)/%.$(OSUFF) ; # TODO
-$(LONG_NATIVELOGS): tmp/%-long.log: tmp bin/$(REGRDIR)/%.$(OSUFF) ; # TODO
+$(NATIVELOGS): tmp/%.log: tmp bin/$(REGRDIR)/%.$(OSUFF)
+	@date > $@
+	./TestCircuits $* >> $@
+	@grep -q "Tests passed" $@ || echo "    Test failed"
+
+$(LONG_NATIVELOGS): tmp/%-long.log: tmp bin/$(REGRDIR)/%.$(OSUFF)
+	@date > $@
+	./TestCircuits $*-long >> $@
+	@grep -q "Tests passed" $@ || echo "    Test failed"
