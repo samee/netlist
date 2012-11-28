@@ -120,8 +120,11 @@ naiveCount maxn acts = countGates $ gcilList $ do
     cktMain push pop acts stk
 
 
-runTests = do (maxn,acts) <- getStdRandom $ randomTest 2000 100
-              burnTestCase "stacktest" $ gcRandomTest (maxn,acts)
+shortTests = do (maxn,acts) <- getStdRandom $ randomTest 200 100
+                burnTestCase "stacktest" $ gcRandomTest (maxn,acts)
+
+longTests = do (maxn,acts) <-getStdRandom $ randomTest 2000 200
+               burnTestCase "stackLongTest" $ gcRandomTest (maxn,acts)
 
 -- TODO move this into Benchmark
 {-

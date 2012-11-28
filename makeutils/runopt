@@ -1,0 +1,8 @@
+#!/bin/bash
+CIRFILE=$1
+SERVER_INPUT=$2
+CLIENT_INPUT=$3
+OUTFILE=`basename $1`.opt
+
+./optimize.sh $CIRFILE --no-local
+time ./runtestgcparser $OUTFILE $SERVER_INPUT $CLIENT_INPUT

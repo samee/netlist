@@ -36,5 +36,6 @@ gcTheLittleJohn x = do
   y <- liftNet $ theLittleJohn v
   ignoreAndsUsed $ liftNet $ equal y y'
 
-runTests = do burnTestCase "inaneCase" $ gcTheOp 3
-              burnTestCase "littleJohn" $ gcTheLittleJohn 20000
+shortTests = burnTestCase "inaneCase" $ gcTheOp 3
+
+longTests  = burnTestCase "littleJohn" $ gcTheLittleJohn 20000

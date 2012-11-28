@@ -30,8 +30,10 @@ longList rgen = (take 20 full,rgen2) where
 batcherSortTestShort = batcherSortTest shortList
 shellSortTestShort = shellSortTest shortList
 
-runTests = do
+shortTests = do
   ll <- getStdRandom longList
   putStrLn $ show batcherSortTestShort ++ "   Test.Sorter.batcherSortTestShort"
   putStrLn $ show   shellSortTestShort ++ "   Test.Sorter.shellSortTestShort"
   putStrLn $ show (shellSortTest ll) ++ "   Test.Sorter.shellSortTest"
+
+longTests = return () :: IO ()

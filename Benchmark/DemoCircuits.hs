@@ -89,48 +89,6 @@ wideAngle theta maxTheta = if n <= 1
   n = length theta
 
 
-
-
-{-
-    let result  = constIntW (intWidth maxTheta) 0
-        unseen  = Nq.fromList $ tail theta
-        inRange = Nq.fromList [theta!!1]
-    curSep <- modDiff maxTheta (theta!!0) (theta!!1)
-    (result,_,_,_) <- foldM (\(result,inRange,curSep,unseen) _ -> do
-
-
-
-
-      mbcuri   <- Nq.front unseen
-      if knownNothing mbcuri then return (result,inRange,curSep,unseen)
-      else do
-        let curi = netFromJust mbcuri 
-        iend     <- netIsNothing mbcuri
-        -- FIXME curSep should not change if unseen is empty
-        result   <- netMax result curSep
-        nextmb   <- Nq.front inRange
-        (c,curSep')  <- netCaseMaybe (\mb -> case mb of 
-                        Nothing -> return (netFalse,curSep)
-                        Just nextj -> do 
-                          nextSep <- modDiff maxTheta nextj curi
-                          c' <- netNot =<< greaterThan curSep nextSep
-                          return (c',nextSep)
-                        ) nextmb
-        tb      <- netAnd c  =<< netNot iend
-        fb      <- netXor tb =<< netNot iend
-        inRange <- Nq.condPop tb inRange
-        curSep  <- mux tb curSep curSep'
-        unseen  <- Nq.condPop fb unseen
-        inRange <- Nq.condPush fb curi inRange
-        ...
-        return (result,inRange,curSep,unseen)
-      ) (result,inRange,curSep,unseen) [1..2*n-1]
-    return result
-  where
-  n = length theta
-  (firstHalf,secondHalf) = splitAt (n`div`2) theta
-  -}
-
 -- modDiff m a b assumes a <= b < maxtheta
 modDiff m a b = do 
   x <- sub b a

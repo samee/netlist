@@ -1,4 +1,4 @@
-module Test.QueueGcil (runTests) where
+module Test.QueueGcil where
 
 import Control.Monad
 import Control.Monad.State
@@ -124,10 +124,13 @@ naiveCount maxn acts = countGates $ gcilList $ do
     q' <- liftNet $ sqPop netTrue q
     cktMain a b acts q'
 
-qsize = 200
+shortTests = getStdRandom (randomTest 200 qsize) 
+         >>= burnTestCase "queuetest" . compileActs qsize
+  where qsize = 100
 
-runTests = getStdRandom (randomTest 2000 qsize) 
-       >>= burnTestCase "queuetest" . compileActs qsize
+longTests = getStdRandom (randomTest 2000 qsize)
+         >>= burnTestCase "queueLongTest" . compileActs qsize
+  where qsize = 200
 
 -- TODO move this into a benchmark test
 {-

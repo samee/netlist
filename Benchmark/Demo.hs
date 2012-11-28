@@ -51,24 +51,6 @@ wideAngleCase algo (theta1,theta2,thMax) = do
         thetaWidth = valueSize thMax
 
 {-
-wideAngleCase algo theta thMax expected = do
-  thetaVars   <- replicateM (length theta) (newInput thetaWidth 1)
-  thMaxVar    <- newInput thetaWidth 1
-  expectedVar <- newInput thetaWidth 2
-  result      <- algo thetaVars thMaxVar
-  eq <- ignoreAndsUsed $ equalU expectedVar result
-  newOutput (bitToInt eq)
-  return ( [(gblName expectedVar, expected)]
-         , zip (map gblName $ thMaxVar:thetaVars) (thMax:theta))
-
-  where thetaWidth = valueSize thMax
-      
-burnWideAngleTest theta thMax expected = do
-  writeTestCase ("wideAngleTest" ++ show (length theta))
-    (wideAngleCase Demo.wideAngle theta thMax expected) fst snd
-  writeTestCase ("wideAngleNaiveTest" ++ show (length theta))
-    (wideAngleCase Demo.wideAngleNaive theta thMax expected) fst snd
-
 runWideAngleTests = forM_ ns $ \n -> do
              putStrLn $ "Case n = "++show n
              (l,expected) <- getStdRandom (randomWideAngleTest thMax n)
@@ -78,12 +60,6 @@ runWideAngleTests = forM_ ns $ \n -> do
   where
   thMax = 256
   ns = [128, 256, 512, 1024, 2048]
-
-naiveCost thMax n = fcost + maxcost where
-  fcost = 4*w*fcount -- 2 subtractions and a min operation
-  maxcost = (fcount-1)*2*w
-  fcount = (n*(n-1)) `div` 2
-  w = valueSize thMax
 
 localRectangleInHistogram l = maximum [h*w | prefix <- init $ tails l,
     (h,w) <- scanl heightScanner (0,maxBound) prefix]  where
@@ -123,6 +99,8 @@ traceMerge x@(l1,l2,_) = traceShow (runIdentity $ Sort.merge cx l1 l2) x
   where 
   cx a b = return $ if a<b then (a,b) else (b,a)
 
+-- TODO test run full batch again.
+-- Next benchmark: for(all i) {go back some steps}
 runTests = do pack <- getStdRandom (randomWideAngleTest (2^10) 128)
               burnTestCase "wideAngle128" $ gcilList 
                   $ wideAngleCase wideAngleNaive pack

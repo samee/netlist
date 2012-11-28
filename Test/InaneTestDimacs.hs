@@ -14,4 +14,6 @@ dmTheOp res = do
   dmAssert eq
   dmPutStrLn $ "theOp "-|-x-|-" = "++show res
 
-runTests = burnSatQuery "inaneCase" (dmTheOp 8)
+shortTests = burnSatQuery "inaneCase" (dmTheOp 8)
+
+longTests = return () :: IO ()
