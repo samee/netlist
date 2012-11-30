@@ -105,10 +105,10 @@ foldMWithBreak f init (h:t) = do mb <- f init h
 
 -- Naive O(n^2) comparison
 wideAngleNaive :: [NetUInt] -> NetUInt -> NetWriter NetUInt
-wideAngleNaive theta maxTheta = join $ fold1M (liftM2 netMax) l
+wideAngleNaive theta maxTheta = fold1M netMax =<< l
   where
   allPair = [(a,b) | (a,bs) <- zip theta (tail $ tails theta), b <- bs]
-  l = map (uncurry $ modDiff maxTheta) allPair
+  l = mapM (uncurry $ modDiff maxTheta) allPair
 
 -- shiftLeft amt x = bitConcat [x,(constIntW amt 0)]
 

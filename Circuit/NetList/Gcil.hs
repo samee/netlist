@@ -56,6 +56,7 @@ module Circuit.NetList.Gcil
 , gcilOutBits
 , ignoreAndsUsed
 , burnTestCase
+, burnBenchmark
 , countGates
 ) where
 
@@ -93,13 +94,18 @@ burnTestCase caseName cktlister = do
       StartIgnoreStats   -> writeIORef counting False
       EndIgnoreStats     -> writeIORef counting True
   ac <- readIORef andCount
-  -- makeutils/GcilTest depends on this exact string output
+  -- makeutils/GcilTest depend on this exact string output
   putStrLn $ "Created Gcil test case: " ++ caseName ++ ". " ++
              "ANDs: " ++ show ac ++ ". successVar: " ++ idName successId
   where
   addOut = do a <- cktlister
               liftNet $ newOutput =<< bitify a
   (successId,bytecode) = runGcilMonad addOut
+
+-- Does not expect a "success flag" in the return value
+burnBenchmark :: String -> GcilMonad a -> IO ()
+burnBenchmark caseName cktlister = burnTestCase caseName padout where
+  padout = cktlister >> return netTrue
 
 countGates :: [GcilInstr] -> (Int,Int)
 countGates bytecode = sums 0 0 filterbyte where

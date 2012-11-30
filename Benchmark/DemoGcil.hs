@@ -1,4 +1,3 @@
-module Benchmark.Demo where
 
 import Control.Monad
 import Control.Monad.Identity
@@ -46,7 +45,7 @@ wideAngleCase algo (theta1,theta2,thMax) = do
     r <- algo theta (constInt thMax)
     newOutput =<< bitify r
     return r
-  gcilOutBits <=< ignoreAndsUsed $ liftNet $ equal result (constInt expected)
+  ignoreAndsUsed $ liftNet $ equal result (constInt expected)
   where expected = localWideAngle2 thMax $ theta1++theta2
         thetaWidth = valueSize thMax
 
@@ -99,8 +98,10 @@ traceMerge x@(l1,l2,_) = traceShow (runIdentity $ Sort.merge cx l1 l2) x
   where 
   cx a b = return $ if a<b then (a,b) else (b,a)
 
--- TODO test run full batch again.
--- Next benchmark: for(all i) {go back some steps}
-runTests = do pack <- getStdRandom (randomWideAngleTest (2^10) 128)
-              burnTestCase "wideAngle128" $ gcilList 
-                  $ wideAngleCase wideAngleNaive pack
+-- The Naive benchmarks are running out of memory on my laptop :-/
+main = forM_ [128,256,512,1024,2048] $ \n -> do
+            pack <- getStdRandom (randomWideAngleTest 256 n)
+            burnTestCase ("wideAngleSmart"++show n) 
+              $ wideAngleCase wideAngle pack
+            burnTestCase ("wideAngleNaive"++show n)
+              $ wideAngleCase wideAngleNaive pack

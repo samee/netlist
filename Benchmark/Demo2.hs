@@ -1,5 +1,3 @@
-module Benchmark.Demo2 where
-
 import Control.Monad
 import Data.List
 import System.Random
@@ -121,10 +119,10 @@ mkcktSpeedDiff calc w a b = do
   dfpairs <- liftNet $ calc av bv
   liftNet $ forM dfpairs outputBlinded
 
-runTests = forM [16,32,64,128,256,512] $ \sz -> do
-              a <- getStdRandom $ randomSortedList (2^16) sz
-              b <- getStdRandom $ randomSortedList (2^16) sz
-              burnTestCase ("speedGood"++show sz) $ gcilList 
-                $ mkcktSpeedDiff speedDifferences 16 a b
-              burnTestCase ("speedBad"++show sz) $ gcilList
-                $ mkcktSpeedDiff speedDifferencesBad 16 a b
+main = forM [16,32,64,128,256,512] $ \sz -> do
+         a <- getStdRandom $ randomSortedList (2^16) sz
+         b <- getStdRandom $ randomSortedList (2^16) sz
+         burnBenchmark ("speedGood"++show sz)
+           $ mkcktSpeedDiff speedDifferences 16 a b
+         burnBenchmark ("speedBad"++show sz)
+           $ mkcktSpeedDiff speedDifferencesBad 16 a b

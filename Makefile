@@ -17,15 +17,25 @@ testfilter = $(filter $(REGRDIR)/%.hs, $(filter-out $(REGRDIR)/%-old.hs, $(1)))
 REGRTESTS := $(patsubst $(REGRDIR)/%.hs, %, \
                $(call testfilter, $(wildcard $(REGRDIR)/*.hs)))
 # REGRTESTS naming convention suffixes: -old Dimacs Gcil Native
-TESTLOGS := $(patsubst %,tmp/%.log,$(REGRTESTS))
-GCILLOGS := $(filter %Gcil.log,$(TESTLOGS))
+TESTLOGS   := $(patsubst %,tmp/%.log,$(REGRTESTS))
+GCILLOGS   := $(filter %Gcil.log,$(TESTLOGS))
 DIMACSLOGS := $(filter %Dimacs.log,$(TESTLOGS))
 NATIVELOGS := $(filter %Native.log,$(TESTLOGS))
 
+# These run only on 'make test'
 LONG_TESTLOGS := $(patsubst %,tmp/%-long.log,$(REGRTESTS))
 LONG_GCILLOGS := $(filter %Gcil-long.log,$(LONG_TESTLOGS))
 LONG_DIMACSLOGS := $(filter %Dimacs-long.log,$(LONG_TESTLOGS))
 LONG_NATIVELOGS := $(filter %Native-long.log,$(LONG_TESTLOGS))
+
+# These run only when explicitly requested by name, 
+#   e.g. 'make bin/WideAngleGcil-bench.log'
+# Same naming convention suffixes as REGRTESTS
+BENCHMARKS     := $(filter-out Benchmark/%-old.hs,$(wildcard Benchmark/*.hs))
+BENCHLOGS      := $(patsubst Benchmark/%.hs,tmp/%-bench.log,$(BENCHMARKS))
+GCIL_BENCHES   := $(filter %Gcil-bench.log,$(BENCHLOGS))
+DIMACS_BENCHES := $(filter %Dimacs-bench.log,$(BENCHLOGS))
+NATIVE_BENCHES := $(filter %Native-bench.log,$(BENCHLOGS))
 
 .PHONY: all testbins test clean
 
@@ -51,6 +61,11 @@ clean:
 #   does all the usual make magic for building
 testbins: TestCircuits.hs
 	$(GHC) --make TestCircuits $(GHCFLAGS_FULL)
+
+# It just so happens that ghc --make updates *.o files
+$(patsubst %.hs,bin/%.$(OSUFF),$(BENCHMARKS)): bin/Benchmark/%.$(OSUFF): \
+  Benchmark/%.hs
+	$(GHC) $(GHCFLAGS_FULL) --make $< -o $*
 
 # Probably the "most standalone" source file I have here
 FormatDimacs: FormatDimacs.hs
@@ -85,6 +100,12 @@ $(LONG_GCILLOGS): tmp/%-long.log: tmp bin/$(REGRDIR)/%.$(OSUFF)
 	./TestCircuits $*-long >> $@
 	makeutils/GcilTest $(GCPARSER_PATH) $@
 
+# TODO change source files to Main module
+$(GCIL_BENCHES): tmp/%-bench.log: tmp Benchmark/%.hs bin/Benchmark/%.$(OSUFF)
+	./$* > $@
+	rm $*
+	makeutils/GcilTest $(GCPARSER_PATH) $@
+
 $(DIMACSLOGS): tmp/%.log: tmp bin/$(REGRDIR)/%.$(OSUFF)
 	@echo "------- TestCircuits -------" > $@
 	@date >> $@
@@ -97,6 +118,8 @@ $(LONG_DIMACSLOGS): tmp/%-long.log: tmp bin/$(REGRDIR)/%.$(OSUFF)
 	./TestCircuits $*-long >> $@
 	makeutils/DimacsTest $(SATSOLVER_BIN) $@
 
+$(DIMACS_BENCHES): tmp/%-bench.log: tmp Benchmark/%.hs ; # TODO
+
 $(NATIVELOGS): tmp/%.log: tmp bin/$(REGRDIR)/%.$(OSUFF)
 	@date > $@
 	./TestCircuits $* >> $@
@@ -106,3 +129,5 @@ $(LONG_NATIVELOGS): tmp/%-long.log: tmp bin/$(REGRDIR)/%.$(OSUFF)
 	@date > $@
 	./TestCircuits $*-long >> $@
 	@grep -q "Tests passed" $@ || echo "    Test failed"
+
+$(NATIVES_BENCHES): tmp/%-bench-log: tmp Benchmark/%.hs ; # TODO
