@@ -144,10 +144,10 @@ testInt party width value
   = liftM (intFromBits.toNet) $ gcilTestInput party width value
 
 liftNet :: NetWriter a -> GcilMonad a
-liftNet nw = do initId <- lift get
+liftNet nw = do initId <- get
                 let ((result,endId),nl) = netList addend initId
-                put endId
                 tell $ map CalcInstr nl
+                put endId
                 return result
   where addend = do r <- nw
                     endId <- nextBitId

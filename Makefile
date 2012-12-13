@@ -1,5 +1,6 @@
 GHC := ghc
 GHCFLAGS := -O2
+RTSOPTSF := +RTS $(RTSOPTS) -RTS
 
 GCPARSER_PATH := ../gcparser
 SATSOLVER_BIN := ../lingeling/lingeling
@@ -62,6 +63,7 @@ clean:
 testbins: TestCircuits.hs
 	$(GHC) --make TestCircuits $(GHCFLAGS_FULL)
 
+# XXX why didn't I add % in list of targets? And add that in GCIL_BENCHES rule?
 # It just so happens that ghc --make updates *.o files
 $(patsubst %.hs,bin/%.$(OSUFF),$(BENCHMARKS)): bin/Benchmark/%.$(OSUFF): \
   Benchmark/%.hs
@@ -91,43 +93,43 @@ TestCircuits.hs: makeutils/TestGen
 $(GCILLOGS): tmp/%.log: tmp bin/$(REGRDIR)/%.$(OSUFF)
 	@echo "------- TestCircuits -------" > $@
 	@date >> $@
-	./TestCircuits $* >> $@
+	./TestCircuits $* $(RTSOPTSF) >> $@
 	makeutils/GcilTest $(GCPARSER_PATH) $@
 
 $(LONG_GCILLOGS): tmp/%-long.log: tmp bin/$(REGRDIR)/%.$(OSUFF)
 	@echo "------- TestCircuits -------" > $@
 	@date >> $@
-	./TestCircuits $*-long >> $@
+	./TestCircuits $*-long $(RTSOPTSF) >> $@
 	makeutils/GcilTest $(GCPARSER_PATH) $@
 
 # TODO change source files to Main module
 $(GCIL_BENCHES): tmp/%-bench.log: tmp Benchmark/%.hs bin/Benchmark/%.$(OSUFF)
-	./$* > $@
+	./$* $(RTSOPTSF) > $@
 	rm $*
 	makeutils/GcilTest $(GCPARSER_PATH) $@
 
 $(DIMACSLOGS): tmp/%.log: tmp bin/$(REGRDIR)/%.$(OSUFF)
 	@echo "------- TestCircuits -------" > $@
 	@date >> $@
-	./TestCircuits $* >> $@
+	./TestCircuits $* $(RTSOPTSF) >> $@
 	makeutils/DimacsTest $(SATSOLVER_BIN) $@
 
 $(LONG_DIMACSLOGS): tmp/%-long.log: tmp bin/$(REGRDIR)/%.$(OSUFF)
 	@echo "------- TestCircuits -------" > $@
 	@date >> $@
-	./TestCircuits $*-long >> $@
+	./TestCircuits $*-long $(RTSOPTSF) >> $@
 	makeutils/DimacsTest $(SATSOLVER_BIN) $@
 
 $(DIMACS_BENCHES): tmp/%-bench.log: tmp Benchmark/%.hs ; # TODO
 
 $(NATIVELOGS): tmp/%.log: tmp bin/$(REGRDIR)/%.$(OSUFF)
 	@date > $@
-	./TestCircuits $* >> $@
+	./TestCircuits $* $(RTSOPTSF) >> $@
 	@grep -q "Tests passed" $@ || echo "    Test failed"
 
 $(LONG_NATIVELOGS): tmp/%-long.log: tmp bin/$(REGRDIR)/%.$(OSUFF)
 	@date > $@
-	./TestCircuits $*-long >> $@
+	./TestCircuits $*-long $(RTSOPTSF) >> $@
 	@grep -q "Tests passed" $@ || echo "    Test failed"
 
 $(NATIVES_BENCHES): tmp/%-bench-log: tmp Benchmark/%.hs ; # TODO

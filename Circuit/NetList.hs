@@ -128,7 +128,7 @@ data NetBinOp = BitAdd | BitSub | BitOr | BitAnd | BitXor | BitEq | BitGt
 data NetUnOp = BitNot | BitNeg | BitAny | BitParityOdd
 data ExtendType = SignExtend | ZeroExtend
 
-data NetState = NetState { nextSym :: !Int }
+newtype NetState = NetState { nextSym :: Int }
 
 type NetWriter = WriterT [NetInstr] (State NetState)
 

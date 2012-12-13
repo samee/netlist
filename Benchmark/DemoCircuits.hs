@@ -104,11 +104,11 @@ foldMWithBreak f init (h:t) = do mb <- f init h
                                             Just x  -> foldMWithBreak f x t
 
 -- Naive O(n^2) comparison
+-- More readable versions of this function was overflowing the stack FIXME
 wideAngleNaive :: [NetUInt] -> NetUInt -> NetWriter NetUInt
-wideAngleNaive theta maxTheta = fold1M netMax =<< l
-  where
-  allPair = [(a,b) | (a,bs) <- zip theta (tail $ tails theta), b <- bs]
-  l = mapM (uncurry $ modDiff maxTheta) allPair
+wideAngleNaive theta maxTheta = foldM (\res (h:ts) ->
+  foldM (\res t -> netMax res =<< modDiff maxTheta h t) res ts
+  ) (constInt 0) (init $ tails theta)
 
 -- shiftLeft amt x = bitConcat [x,(constIntW amt 0)]
 

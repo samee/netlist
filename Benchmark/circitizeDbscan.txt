@@ -1,0 +1,73 @@
+Params: eps,minpts
+
+DBSCAN(p):
+  C=1;
+  for each p: if cluster[p]==0: scanOut(p,C)
+
+scanOut(p,&C):
+  P=neighbors(eps,p)
+  if |P|<minpts: return
+  Stk = P
+  curCluster = C++;
+  while !Stk.empty:
+    cur = stk.pop()
+    if cluster[cur]!=0: continue
+    cluster[cur]=curCluster
+    P' = neighbors(eps,cur)
+    if |P'|<minpts: continue
+    foreach p' in P': stk.push(p')
+
+Now slowly turn this whole thing into a circuit, step by step. Step 1:
+
+DBSCAN(p,eps,minpts)
+  C=0;
+  outerloop=true;
+  i=0;
+  stk=empty;
+  loop 2*n times:
+    if outerloop:
+      if i<n && cluster[i]==0:   -- O(n)
+        P = neighbors(eps,i)     -- O(n)
+        if |P|>=minpts:          -- O(n)
+          stk.pushAll P          -- O(n log n)
+          C++
+          outerloop=false;
+    else if stk.empty: outerloop=true; i++
+    else
+      cur = stk.pop()
+      if cluster[cur]!=0: continue
+      cluster[cur]=C
+      P' = neighbors(eps,cur)
+      if |P|>=minpts:
+        stk.pushAll P'
+
+I am still using expensive neighbors() and pushAll() circuits too many times
+I think I can refactor those out.
+
+
+Step 2:
+DBSCAN(p,eps,minpts)
+  C=0;
+  outerloop=true;
+  i=0;
+  stk=empty;
+  loop 2*n times:
+    checkNeighbors = false
+    if outerloop:
+      if i<n && cluster[i]==0:   -- O(n)
+        checkNeighbor=true
+        cp=i
+    else if stk.empty: outerloop = true; i++
+    else
+      cur = stk.pop()
+      if cluster[cur]!=0: continue
+      cluster[cur]=C
+      checkNeighbors=true; cp=cur
+
+    if checkNeighbors:  -- cp -> modify outerLoop,C,stack
+      P = neighbors(eps,cp)
+      if |P| >= minpts:
+        stk.pushAll P -- exclude cp if not outerLoop
+        if outerLoop:
+          C++
+          outerLoop = false
