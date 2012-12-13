@@ -37,17 +37,17 @@ dbscanExpand neighbor minpts clusInit cc l initKey = aux clusInit [initKey]
 -- For more info, look at circitizeDbscan.txt
 
 dbscanGcil neighbor minpts l = do
-  cc <- return $ constInt 0
-  outerLoop <- return netTrue
-  i <- return $ constIntW (indexSize n) 0
-  stk <- Stk.empty
-  cluster <- replicateM n $ return $ indexSize n
+  let cc = constInt 0
+      outerLoop = netTrue
+      i = constIntW (indexSize n) 0
+      stk = Stk.empty
+      cluster = replicate n i
+
   (cluster,cc,_,_,_) <- foldM (\(cluster,cc,outerLoop,i,stk) _ -> do
-    checkNeighbor <- return netFalse
     startExpand <- do c1 <- greaterThan (constInt n) i
                       c2 <- equal (constInt 0) =<< muxList i cluster
                       netAnds [outerLoop,c1,c2]
-    checkNeighbor <- netOr checkNeighbor startExpand
+    checkNeighbor <- return startExpand
     cp <- return i
     stopExpand <- bind2 netAnd (netNot outerLoop) (Stk.null stk)
     outerLoop' <- netOr outerLoop stopExpand
@@ -74,3 +74,6 @@ dbscanGcil neighbor minpts l = do
   ) (cluster,cc,outerLoop,i,stk) [1..2*n]
 
   where n = length l
+
+-- TODO eyeball this a little longer with circitize by the side
+-- Make a new data maker. Fix data range. Run, debug, collect data.
