@@ -1,5 +1,11 @@
 
+import Control.Monad
 import Data.Map as M
+
+import Circuit.NetList
+import Circuit.NetList.Gcil
+import qualified Circuit.Stack as Stk
+import Util
 
 -- This version of DBSCAN does not return core vs non-core point records
 -- Return value assigns each input data point to a cluster index, starting with
@@ -9,10 +15,10 @@ dbscan :: (a -> a -> Bool) -> Int -> [a] -> ([Int],Int)
 dbscan neighbor minpts l = aux (zip [0..] l) M.empty 0 where
   aux [] clus cc = (M.elems clus,cc)
   aux ((i,x):ps) clus cc 
-  | M.member i clus = aux ps clus cc
-  | nc < minpts     = aux ps (M.insert i 0 clus) cc
-  | otherwise       = cc' `seq` aux ps clus' cc'
-  where
+    | M.member i clus = aux ps clus cc
+    | nc < minpts     = aux ps (M.insert i 0 clus) cc
+    | otherwise       = cc' `seq` aux ps clus' cc'
+    where
     nc = length ne
     ne = [j | (j,x') <- zip [0..] l, neighbor x x']
     cc' = cc+1
@@ -65,13 +71,14 @@ dbscanGcil neighbor minpts l = do
     nc <- countTrue closeVec
     pc <- netAnd checkNeighbor =<< greaterThan nc (minpts-1)
     stk <- foldM (\(x,c) stk -> do c' <- netAnd c pc
-                                   condPush c' x stk) stk l
+                                   Stk.condPush c' x stk) stk l
     startExpand2 <- netAnd outerLoop pc
     cc <- condAdd startExpand2 cc (constInt 1)
     outerLoop' <- netAnd outerLoop' =<< netNot startExpand2
 
     return (cluster,cc,outerLoop',i,stk)
-  ) (cluster,cc,outerLoop,i,stk) [1..2*n]
+    ) (cluster,cc,outerLoop,i,stk) [1..2*n]
+  return (cluster,cc)
 
   where n = length l
 
