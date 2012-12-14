@@ -2,9 +2,9 @@
 import Control.Monad
 import Data.Map as M
 
+import Benchmark.Util
 import Circuit.NetList
 import Circuit.NetList.Gcil
-import qualified Circuit.Stack as Stk
 import Util
 
 -- This version of DBSCAN does not return core vs non-core point records
@@ -42,11 +42,14 @@ dbscanExpand neighbor minpts clusInit cc l initKey = aux clusInit [initKey]
 -- The same depth-first algorithm presented above is now a circuit below
 -- For more info, look at circitizeDbscan.txt
 
-dbscanGcil neighbor minpts l = do
+-- 'emptystk' here is just a hack into the type system, so that I can
+--   specify the internal stack type being used when calling the function
+-- TODO put an O(n) stack length cap with a "pushed" flag?
+dbscanGcil emptystk neighbor minpts l = do
   let cc = constInt 0
       outerLoop = netTrue
       i = constIntW (indexSize n) 0
-      stk = Stk.empty
+      stk = emptystk
       cluster = replicate n i
 
   (cluster,cc,_,_,_) <- foldM (\(cluster,cc,outerLoop,i,stk) _ -> do
@@ -55,23 +58,24 @@ dbscanGcil neighbor minpts l = do
                       netAnds [outerLoop,c1,c2]
     checkNeighbor <- return startExpand
     cp <- return i
-    stopExpand <- bind2 netAnd (netNot outerLoop) (Stk.null stk)
+    stopExpand <- bind2 netAnd (netNot outerLoop) (stkNull stk)
     outerLoop' <- netOr outerLoop stopExpand
     i <- condAdd stopExpand i (constInt 1)
     keepExpand <- netXor stopExpand =<< netNot outerLoop
-    cur <- Stk.top stk
-    stk <- Stk.condPop keepExpand stk
+    -- fromJust could have been avoided FIXME
+    cur <- liftM netFromJust $ stkTop stk  
+    stk <- stkCondPop keepExpand stk
     unvisited <- netAnd keepExpand 
               =<< equal (constInt 0) =<< muxList cur cluster
-    cluster <- naiveArrayWrite unvisited cur cc cluster
+    cluster <- naiveListWrite unvisited cur cc cluster
     checkNeighbor <- netOr checkNeighbor unvisited
     cp <- mux unvisited cp cur
 
     closeVec <- mapM (neighbor cp) l
     nc <- countTrue closeVec
-    pc <- netAnd checkNeighbor =<< greaterThan nc (minpts-1)
-    stk <- foldM (\(x,c) stk -> do c' <- netAnd c pc
-                                   Stk.condPush c' x stk) stk l
+    pc <- netAnd checkNeighbor =<< greaterThan nc (constInt $ minpts-1)
+    stk <- foldM (\stk (x,c) -> do c' <- netAnd c pc
+                                   stkCondPush c' x stk) stk l
     startExpand2 <- netAnd outerLoop pc
     cc <- condAdd startExpand2 cc (constInt 1)
     outerLoop' <- netAnd outerLoop' =<< netNot startExpand2
@@ -84,3 +88,30 @@ dbscanGcil neighbor minpts l = do
 
 -- TODO eyeball this a little longer with circitize by the side
 -- Make a new data maker. Fix data range. Run, debug, collect data.
+
+-- TODO this part needs to go in some kind of a Utility file, useful only for
+--   benchmarking
+netDiff a b = do c <- greaterThan a b
+                 bind2 (mux c) (sub b a) (sub a b)
+
+dist p1 p2 = do bind2 add (netDiff (fst p1) (fst p2)) 
+                          (netDiff (snd p1) (snd p2))
+
+-- Counts in a convoluted way to reduce bitwidths as much as possible
+countTrue :: [NetBool] -> NetWriter NetUInt
+countTrue [] = return (constIntW 1 0)
+countTrue l 
+  | Just (h,t) <- oddLength = do zo <- liftM intFromBits $ bitify h
+                                 add zo =<< countTrue t
+  | otherwise = do r1 <- countTrue t1
+                   r2 <- countTrue t2
+                   add r1 =<< extendBy 1 r2
+  where
+  n = length l
+  half = n `div` 2
+  (t1,t2) = splitAt half l
+  oddLength | odd (length l) = Just (head l, tail l)
+            | otherwise = Nothing
+
+
+main = return ()

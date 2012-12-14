@@ -15,6 +15,7 @@ module Circuit.NetList
 , netAnds
 , netXors
 , NetInt (extend,constInt,constIntW,intFromBits,intWidth)
+, extendBy
 , add
 , sub
 , equal

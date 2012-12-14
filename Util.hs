@@ -15,6 +15,7 @@ bind = (=<<)
 bind2 f a b = join $ liftM2 f a b
 bind3 f a b c = join $ liftM3 f a b c
 joinAp f ma = do a <- ma; f a
+fold1M f l = foldM f (head l) (tail l)
 
 ceilDiv a b = (a+b-1) `div` b
 

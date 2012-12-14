@@ -95,8 +95,6 @@ modDiff m a b = do
   y <- sub m x
   netMin x y
 
-fold1M f l = foldM f (head l) (tail l)
-
 foldMWithBreak :: Monad m => (a -> b -> m (Maybe a)) -> a -> [b] -> m a
 foldMWithBreak f init [] = return init
 foldMWithBreak f init (h:t) = do mb <- f init h
