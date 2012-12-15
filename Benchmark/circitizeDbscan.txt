@@ -68,6 +68,6 @@ DBSCAN(p,eps,minpts)
       P = neighbors(eps,cp)
       if |P| >= minpts:
         stk.pushAll P -- exclude cp if not outerLoop
-        if outerLoop:
+        if outerLoop~old:
           C++
           outerLoop = false
