@@ -94,7 +94,7 @@ dbscanGcil emptystk neighbor minpts l = do
     ) :: StackType s
     => ([NetUInt],NetUInt,NetBool,NetUInt,s NetUInt) -> Int
     -> NetWriter ([NetUInt],NetUInt,NetBool,NetUInt,s NetUInt) )
-    (cluster,cc,outerLoop,i,emptystk) [1..2*n]
+    (cluster,cc,outerLoop,i,stkCapLength (n*n) emptystk) [1..2*n]
   return (cluster,cc)
 
   where n = length l
@@ -102,8 +102,6 @@ dbscanGcil emptystk neighbor minpts l = do
 -- TODO eyeball this a little longer with circitize by the side
 -- Make a new data maker. Fix data range. Run, debug, collect data.
 
--- TODO this part needs to go in some kind of a Utility file, useful only for
---   benchmarking
 netDiff a b = do c <- greaterThan a b
                  bind2 (mux c) (sub b a) (sub a b)
 
@@ -155,7 +153,9 @@ testNeighbor eps p1 p2 = do d <- dist p1 p2
 packAndTest name serverInput clientInput driver = burnBenchmark name $ do
   l1 <- mapM (testPair ServerSide) serverInput
   l2 <- mapM (testPair ClientSide) clientInput
-  liftNet $ driver $ l1++l2
+  (clus,cc) <- liftNet $ driver $ l1++l2
+  gcilOutBits cc
+  gcilOutBits =<< liftNet (countTrue =<< mapM (equal (constInt 1)) clus)
   where
   w=16
   testPair side (x,y) = do xv <- testInt side w x
