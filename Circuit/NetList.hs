@@ -585,9 +585,10 @@ netCaseMaybe f (NetMaybe p (Just x)) = do
   r2 <- f (Just x)
   mux p r1 r2
 
-condModMaybe :: (Maybe a -> NetBool -> b -> NetWriter b)
+condModMaybe :: (NetBool -> b -> NetWriter b)
+             -> (a -> NetBool -> b -> NetWriter b)
              ->  NetMaybe a -> NetBool -> b -> NetWriter b
-condModMaybe f (NetMaybe _ Nothing)  c x = f Nothing c x
-condModMaybe f (NetMaybe p (Just v)) c x = do
-  (c1,c2) <- decoderUnit c p
-  f (Just v) c2 =<< f Nothing c1 x
+condModMaybe nm _ (NetMaybe _ Nothing) c x = nm c x
+condModMaybe nm jm (NetMaybe p (Just v)) c x = do
+  (nc,jc) <- decoderUnit c p
+  jm v jc =<< nm nc x

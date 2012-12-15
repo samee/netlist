@@ -1,10 +1,13 @@
 
 import Control.Monad
+import Control.Monad.State
 import Data.Map as M
+import System.Random
 
 import Benchmark.Util
 import Circuit.NetList
 import Circuit.NetList.Gcil
+import qualified Circuit.Stack
 import Util
 
 -- This version of DBSCAN does not return core vs non-core point records
@@ -45,43 +48,53 @@ dbscanExpand neighbor minpts clusInit cc l initKey = aux clusInit [initKey]
 -- 'emptystk' here is just a hack into the type system, so that I can
 --   specify the internal stack type being used when calling the function
 -- TODO put an O(n) stack length cap with a "pushed" flag?
+dbscanGcil :: (StackType s,Swappable a) 
+           => s NetUInt -> (a -> a -> NetWriter NetBool) -> Int -> [a]
+           -> NetWriter ([NetUInt],NetUInt)
 dbscanGcil emptystk neighbor minpts l = do
   let cc = constInt 0
       outerLoop = netTrue
       i = constIntW (indexSize n) 0
-      stk = emptystk
       cluster = replicate n i
 
-  (cluster,cc,_,_,_) <- foldM (\(cluster,cc,outerLoop,i,stk) _ -> do
+  (cluster,cc,_,_,_) <- foldM ((\(cluster,cc,outerLoop,i,stk) _ -> do
     startExpand <- do c1 <- greaterThan (constInt n) i
                       c2 <- equal (constInt 0) =<< muxList i cluster
                       netAnds [outerLoop,c1,c2]
     checkNeighbor <- return startExpand
-    cp <- return i
-    stopExpand <- bind2 netAnd (netNot outerLoop) (stkNull stk)
-    outerLoop' <- netOr outerLoop stopExpand
-    i <- condAdd stopExpand i (constInt 1)
-    keepExpand <- netXor stopExpand =<< netNot outerLoop
-    -- fromJust could have been avoided FIXME
-    cur <- liftM netFromJust $ stkTop stk  
-    stk <- stkCondPop keepExpand stk
-    unvisited <- netAnd keepExpand 
-              =<< equal (constInt 0) =<< muxList cur cluster
-    cluster <- naiveListWrite unvisited cur cc cluster
-    checkNeighbor <- netOr checkNeighbor unvisited
-    cp <- mux unvisited cp cur
+    cp <- muxList i l
+    -- stopExpand <- bind2 netAnd (netNot outerLoop) (stkNull stk)
+    mbtop <- stkTop stk
+    innerLoop <- netNot outerLoop
+    (cluster,outerLoop',stk,checkNeighbor,cp,i) <- condModMaybe 
+      (\en (clus,_,stk,cnegh,cp,i) -> do 
+        i <- condAdd en i (constInt 1)
+        return (clus,netTrue,stk,cnegh,cp,i))
+      (\curi en (clus,ol',stk,cnegh,cp,i) -> do
+        stk  <- stkCondPop en stk
+        en   <- netAnd en =<< equal (constInt 0) =<< muxList curi clus
+        clus <- naiveListWrite en curi cc clus
+        cnegh<- netOr cnegh en
+        cp   <- mux en cp =<< muxList curi l
+        return (clus,ol',stk,cnegh,cp,i))
+      mbtop innerLoop (cluster,outerLoop,stk,checkNeighbor,cp,i)
 
+    -- FIXME do I exclude myself?
     closeVec <- mapM (neighbor cp) l
     nc <- countTrue closeVec
     pc <- netAnd checkNeighbor =<< greaterThan nc (constInt $ minpts-1)
-    stk <- foldM (\stk (x,c) -> do c' <- netAnd c pc
-                                   stkCondPush c' x stk) stk l
+    stk <- foldM (\stk (x,c) -> do 
+      c' <- netAnd c pc
+      stkCondPush c' (constInt x) stk) stk $ zip [0..] closeVec
     startExpand2 <- netAnd outerLoop pc
     cc <- condAdd startExpand2 cc (constInt 1)
     outerLoop' <- netAnd outerLoop' =<< netNot startExpand2
 
     return (cluster,cc,outerLoop',i,stk)
-    ) (cluster,cc,outerLoop,i,stk) [1..2*n]
+    ) :: StackType s
+    => ([NetUInt],NetUInt,NetBool,NetUInt,s NetUInt) -> Int
+    -> NetWriter ([NetUInt],NetUInt,NetBool,NetUInt,s NetUInt) )
+    (cluster,cc,outerLoop,i,emptystk) [1..2*n]
   return (cluster,cc)
 
   where n = length l
@@ -114,4 +127,48 @@ countTrue l
             | otherwise = Nothing
 
 
-main = return ()
+makeBoxCluster (lox,hix) (loy,hiy) n rgen 
+  = flip runState rgen $ replicateM n $ do x <- state $ randomR (lox,hix)
+                                           y <- state $ randomR (loy,hiy)
+                                           return (x,y)
+
+testData clusterDim pointsInCluster clusterCount rgen 
+  = flip runState rgen $ liftM concat $ replicateM clusterCount randomPlace
+  where
+  randomPlace = do x0 <- state $ randomR (0,10000)
+                   y0 <- state $ randomR (0,10000)
+                   state $ makeBoxCluster (x0, x0+clusterDim) 
+                                          (y0, y0+clusterDim)
+                                          pointsInCluster
+
+testParams :: Int -> Int -> (Int,Int)
+testParams clusterDim pointsInCluster = (eps, expected) where
+  target = 9
+  density = fromIntegral pointsInCluster 
+          / fromIntegral (clusterDim*clusterDim) :: Double
+  eps = floor $ sqrt $ fromIntegral target/(2*density)
+  expected = target `div` 2 + 1
+
+testNeighbor eps p1 p2 = do d <- dist p1 p2
+                            netNot =<< greaterThan d (constInt eps)
+
+packAndTest name serverInput clientInput driver = burnBenchmark name $ do
+  l1 <- mapM (testPair ServerSide) serverInput
+  l2 <- mapM (testPair ClientSide) clientInput
+  liftNet $ driver $ l1++l2
+  where
+  w=16
+  testPair side (x,y) = do xv <- testInt side w x
+                           yv <- testInt side w y
+                           return (xv::NetUInt,yv::NetUInt)
+
+type Points = (NetUInt,NetUInt)
+
+main = do 
+  l1 <- getStdRandom (testData 10 10 2)
+  l2 <- getStdRandom (testData 10 10 2)
+  let (eps,minpts) = testParams 10 10
+      neigh = testNeighbor eps
+      sem   = stkEmpty :: Circuit.Stack.Stack NetUInt
+      nem   = stkEmpty :: SimpleStack NetUInt
+  packAndTest "dbscan" l1 l2 $ dbscanGcil nem neigh minpts
