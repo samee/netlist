@@ -48,7 +48,8 @@
 -- gcilShow for output has to be shelved for now. Some other day
 
 module Circuit.NetList.Gcil
-( gcilList
+( -- gcilList
+  runGcilMonad
 , GcilMonad
 , InputParty(..)
 , testInt
@@ -61,7 +62,7 @@ module Circuit.NetList.Gcil
 ) where
 
 import Control.Monad.State.Strict
-import Control.Monad.Writer
+import Control.Monad.StreamWriter
 import Data.IORef
 import System.IO
 import Circuit.NetList
@@ -82,9 +83,10 @@ burnTestCase :: String -> GcilMonad NetBool -> IO ()
 burnTestCase caseName cktlister = do
   counting <- newIORef True
   andCount <- newIORef 0
-  writeCaseFiles caseName $ \cktFile serverInfile clientInfile ->
-    forM_ bytecode $ \bc -> case bc of
-      InputInstr input -> do
+  successId <- writeCaseFiles caseName $ \cktFile serverInfile clientInfile ->
+    -- forM_ bytecode $ \bc -> case bc of
+    flip runGcilMonad addOut $ \bcfrags -> forM_ bcfrags $ \bc -> case bc of
+      InputInstr input   -> do
         writeInValue serverInfile clientInfile input
         writeInSpec cktFile input
       CalcInstr netinstr -> do compileNetInstr cktFile netinstr
@@ -100,7 +102,7 @@ burnTestCase caseName cktlister = do
   where
   addOut = do a <- cktlister
               liftNet $ newOutput =<< bitify a
-  (successId,bytecode) = runGcilMonad addOut
+  -- (successId,bytecode) = runGcilMonad addOut
 
 -- Does not expect a "success flag" in the return value
 burnBenchmark :: String -> GcilMonad a -> IO ()
@@ -123,16 +125,18 @@ countGates bytecode = sums 0 0 filterbyte where
   filterIgnored False (_:tail)               = filterIgnored False tail
   
 
-type GcilMonad = WriterT [GcilInstr] (State Int)
-gcilList :: GcilMonad a -> [GcilInstr]
-gcilList ckt = evalState (execWriterT ckt) 1
+type GcilMonad = StreamWriter [GcilInstr] (StateT Int IO)
+-- gcilList :: GcilMonad a -> [GcilInstr]
+-- gcilList ckt = evalState (execWriterT ckt) 1
 
-runGcilMonad :: GcilMonad a -> (a,[GcilInstr])
-runGcilMonad ckt = evalState (runWriterT ckt) 1
+-- runGcilMonad :: GcilMonad a -> (a,[GcilInstr])
+-- runGcilMonad ckt = evalState (runWriterT ckt) 1
+runGcilMonad :: ([GcilInstr] -> IO ()) -> GcilMonad a -> IO a
+runGcilMonad out ckt = evalStateT (runStreamWriter (liftIO.out) ckt) 1
 
 gcilOutBits x = liftNet $ newOutput =<< bitify x
 
-gcilTestInput party width value = do id <- state (\id -> (id,id+1))
+gcilTestInput party width value = do id <- lift $ state (\id -> (id,id+1))
                                      let l = InputSpec party width id value
                                      tell [InputInstr l]
                                      return l
@@ -143,15 +147,28 @@ testInt :: NetInt i => InputParty -> Int -> Int -> GcilMonad i
 testInt party width value 
   = liftM (intFromBits.toNet) $ gcilTestInput party width value
 
+-- f = out . mapCalcInstr :: [NetInstr] -> State Int IO ()
+-- I need something of type [NetInstr] -> IO ()
+-- f x :: State Int IO ()
+-- evalStateT (f x) 0 :: IO ()
 liftNet :: NetWriter a -> GcilMonad a
-liftNet nw = do initId <- get
+liftNet nw = StreamWriter (\out -> do
+  initId <- get
+  (result,endId) <- liftIO $ runNetWriter (sink out) addend initId
+  put endId
+  return result
+  )
+                          {-
+liftNet nw = do initId <- lift $ get
                 let ((result,endId),nl) = netList addend initId
                 tell $ map CalcInstr nl
-                put endId
+                lift $ put endId
                 return result
+                -}
   where addend = do r <- nw
                     endId <- nextBitId
                     return (r,endId)
+        sink out = flip evalStateT 0 . out . map CalcInstr
 
 ignoreAndsUsed :: GcilMonad a -> GcilMonad a
 ignoreAndsUsed mr = do tell [StartIgnoreStats]

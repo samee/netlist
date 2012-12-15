@@ -104,6 +104,7 @@ sqPop c q = do
 sqFront q = muxList (sqHead q) (sqContents q)
 
 -- TODO did I ever tell you how I hate code duplication?
+  {-
 queueCount maxn acts = countGates $ gcilList $ compileActs maxn acts
 naiveCount maxn acts = countGates $ gcilList $ do
   pushVars <- mapM (testInt ServerSide intW) pushVals
@@ -123,6 +124,7 @@ naiveCount maxn acts = countGates $ gcilList $ do
     mb <- liftNet $ sqFront q
     q' <- liftNet $ sqPop netTrue q
     cktMain a b acts q'
+-}
 
 shortTests = getStdRandom (randomTest 200 qsize) 
          >>= burnTestCase "queuetest" . compileActs qsize

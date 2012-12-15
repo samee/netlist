@@ -1,7 +1,8 @@
 module Circuit.NetList
 ( NetInstr(..), Opcode(..), NetBinOp(..), NetUnOp(..), ExtendType(..)
 , NetWriter
-, netList
+--, netList
+, runNetWriter
 , addDeallocs -- Forces entire list to be instantiated. Use for small lists only
 , NetBool
 , netFalse
@@ -101,7 +102,7 @@ Remove/rename Gcil.Compiler. Bye bye!
 -}
 
 import Control.Monad.State.Strict
-import Control.Monad.Writer
+import Control.Monad.StreamWriter
 import Data.Bits
 import Data.Maybe
 import Data.Tuple
@@ -131,10 +132,15 @@ data ExtendType = SignExtend | ZeroExtend
 
 newtype NetState = NetState { nextSym :: Int }
 
-type NetWriter = WriterT [NetInstr] (State NetState)
+-- I could have used existentials to lock this down and prevent exposing IO
+type NetWriter = StreamWriter [NetInstr] (StateT NetState IO)
 
-netList :: NetWriter a -> Int -> (a,[NetInstr])
-netList ckt id = evalState (runWriterT ckt) (NetState id)
+-- TODO replace this with the new StreamWriter interface
+-- netList :: NetWriter a -> Int -> (a,[NetInstr])
+-- netList ckt id = evalState (runWriterT ckt) (NetState id)
+runNetWriter :: ([NetInstr] -> IO()) -> NetWriter a -> Int -> IO a
+runNetWriter out ckt id = evalStateT (runStreamWriter out' ckt) (NetState id)
+  where out' = liftIO . out
 
 -- TODO remove this function, replace all this with non-monadic solutions
 -- ... someday. Till then, it helps save memory space
@@ -316,10 +322,10 @@ constBits w v = NetBits w (ConstMask v)
 conjureBits w id = NetBits { bitWidth = w, bitValues = VarId id }
 
 nextBitId :: NetWriter Int
-nextBitId = gets nextSym
+nextBitId = lift $ gets nextSym
 
 newBits :: Int -> NetWriter NetBits
-newBits w = do id <- state $ \(NetState id) -> (id,NetState $ id+1)
+newBits w = do id <- lift $ state $ \(NetState id) -> (id,NetState $ id+1)
                return $ conjureBits w id
 
 singleBitOutput (BinOp BitEq _ _) = True

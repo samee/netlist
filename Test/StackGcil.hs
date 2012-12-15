@@ -100,6 +100,7 @@ ssPop c stk = do
 
 ssTop stk = muxList (ssTopPtr stk) (ssContent stk)
 
+{-
 stackCount maxn acts = countGates $ gcilList $ gcRandomTest (maxn,acts)
 naiveCount maxn acts = countGates $ gcilList $ do
   pushVars <- mapM (testInt ServerSide itemWidth) pushVals
@@ -118,7 +119,7 @@ naiveCount maxn acts = countGates $ gcilList $ do
     mb <- liftNet $ ssTop stk
     stk <- liftNet $ ssPop N.netTrue stk
     cktMain push pop acts stk
-
+-}
 
 shortTests = do (maxn,acts) <- getStdRandom $ randomTest 200 100
                 burnTestCase "stacktest" $ gcRandomTest (maxn,acts)

@@ -150,6 +150,9 @@ liftBunch m = do ((bz,b,endId),l) <- gets $ netList addend . nextNetBits
                     rz <- bitify r
                     return (rz,r,end)
 
+-- TODO Reconstruction of the old netList method, to be removed later
+-- netList :: NetWriter a -> IO (a,[NetInstr])
+
 netIdPlusPlus s = nxt `seq` (id,s{nextNetBits=nxt}) where id = nextNetBits s
                                                           nxt = id+1
 varIdPlusPlus s = nxt `seq` (id,s{nextVar=nxt}) where id = nextVar s
