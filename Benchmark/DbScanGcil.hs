@@ -217,11 +217,14 @@ packAndTest name serverInput clientInput driver = burnBenchmark name $ do
 
 type Points = (NetUInt,NetUInt)
 
-main = do 
-  l1 <- getStdRandom (testData 10 10 2)
-  l2 <- getStdRandom (testData 10 10 2)
-  let (eps,minpts) = testParams 10 10
+main = forM [10,20,40,80,160] $ \pic -> do
+  let cdim = 10; cc = 3
+  l1 <- getStdRandom (testData cdim pic cc)
+  l2 <- getStdRandom (testData cdim pic cc)
+  let (eps,minpts) = testParams cdim pic
       neigh = testNeighbor eps
-      --sem   = dbscanGcil (stkEmpty :: Circuit.Stack.Stack NetUInt)
-      sem   = dbscanGcilSimple
-  packAndTest "dbscan" l1 l2 $ sem neigh minpts
+      sem   = dbscanGcil (stkEmpty :: Circuit.Stack.Stack NetUInt)
+      nem   = dbscanGcilSimple
+      n     = 2*cc*pic
+  packAndTest ("dbscan"++show n) l1 l2 $ sem neigh minpts
+  packAndTest ("dbscanSimple"++show n) l1 l2 $ nem neigh minpts
