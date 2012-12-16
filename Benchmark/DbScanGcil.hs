@@ -54,50 +54,103 @@ dbscanGcil :: (StackType s,Swappable a)
 dbscanGcil emptystk neighbor minpts l = do
   let cc = constInt 0
       outerLoop = netTrue
-      i = constIntW (indexSize n) 0
-      cluster = replicate n i
+      i = constIntW (valueSize n) 0
+      cluster = replicate n (constInt 0)
 
-  (cluster,cc,_,_,_) <- foldM ((\(cluster,cc,outerLoop,i,stk) _ -> do
-    startExpand <- do c1 <- greaterThan (constInt n) i
-                      c2 <- equal (constInt 0) =<< muxList i cluster
-                      netAnds [outerLoop,c1,c2]
-    checkNeighbor <- return startExpand
-    cp <- muxList i l
-    -- stopExpand <- bind2 netAnd (netNot outerLoop) (stkNull stk)
+  (cluster,cc,_,_,_) <- foldM (\(cluster,cc,outerLoop,i,stk) _ -> do
+    inloop <- greaterThan (constInt n) i
+    startExpand <- do c2 <- equal (constInt 0) =<< muxList i cluster
+                      netAnds [outerLoop,inloop,c2]
+    let checkNeighbor = startExpand
+        cp = i
     mbtop <- stkTop stk
-    innerLoop <- netNot outerLoop
+    innerLoop  <- netNot outerLoop
+    outerLoop' <- netAnd outerLoop =<< netNot startExpand
     (cluster,outerLoop',stk,checkNeighbor,cp,i) <- condModMaybe 
-      (\en (clus,_,stk,cnegh,cp,i) -> do 
-        i <- condAdd en i (constInt 1)
-        return (clus,netTrue,stk,cnegh,cp,i))
+      (\en (clus,ol',stk,cnegh,cp,i) -> do 
+        ol' <- netAnd ol' =<< netNot en
+        return (clus,ol',stk,cnegh,cp,i))
       (\curi en (clus,ol',stk,cnegh,cp,i) -> do
         stk  <- stkCondPop en stk
         en   <- netAnd en =<< equal (constInt 0) =<< muxList curi clus
         clus <- naiveListWrite en curi cc clus
+        cp   <- mux en cp curi
         cnegh<- netOr cnegh en
-        cp   <- mux en cp =<< muxList curi l
         return (clus,ol',stk,cnegh,cp,i))
-      mbtop innerLoop (cluster,outerLoop,stk,checkNeighbor,cp,i)
+      mbtop innerLoop (cluster,outerLoop',stk,checkNeighbor,cp,i)
 
-    -- FIXME do I exclude myself?
-    closeVec <- mapM (neighbor cp) l
-    nc <- countTrue closeVec
-    pc <- netAnd checkNeighbor =<< greaterThan nc (constInt $ minpts-1)
+    cur <- muxList cp l
+    closeVec <- mapM (neighbor cur) l
+    nc  <- countTrue closeVec
+    pc  <- netAnd checkNeighbor =<< greaterThan nc (constInt $ minpts-1)
     stk <- foldM (\stk (x,c) -> do 
       c' <- netAnd c pc
       stkCondPush c' (constInt x) stk) stk $ zip [0..] closeVec
-    startExpand2 <- netAnd outerLoop pc
-    cc <- condAdd startExpand2 cc (constInt 1)
-    outerLoop' <- netAnd outerLoop' =<< netNot startExpand2
+    cc <- do c <- netAnds [outerLoop, inloop, pc] -- old outerLoop, no "'"
+             condAdd c cc (constInt 1)
+
+    outerEnd <- netAnd outerLoop' inloop
+    i <- condAdd outerEnd i (constInt 1)
 
     return (cluster,cc,outerLoop',i,stk)
-    ) :: StackType s
-    => ([NetUInt],NetUInt,NetBool,NetUInt,s NetUInt) -> Int
-    -> NetWriter ([NetUInt],NetUInt,NetBool,NetUInt,s NetUInt) )
-    (cluster,cc,outerLoop,i,stkCapLength (n*n) emptystk) [1..2*n]
+    ) (cluster,cc,outerLoop,i,stkCapLength (n*n) emptystk) [1..2*n]
   return (cluster,cc)
 
   where n = length l
+
+-- Feels like I am learning programming for the first time:
+--   rampant code and bug duplication. TODO cleanup
+dbscanGcilSimple :: (Swappable a) 
+           => (a -> a -> NetWriter NetBool) -> Int -> [a]
+           -> NetWriter ([NetUInt],NetUInt)
+dbscanGcilSimple neighbor minpts l = do
+  let cc      = constInt 0
+      cluster = replicate n (constIntW (valueSize n) 0)
+      stk     = stkCapLength n $ stkEmpty :: SimpleStack NetUInt
+      i       = constIntW (valueSize n) 0
+      outer   = netTrue
+      pushed  = replicate n netFalse
+  (pushed,outer,cc,stk,cluster) <- foldM (\(pushed,outer,cc,stk,cluster) _ -> do
+    inloop <- greaterThan (constInt n) i
+    startExpand <- do c <- equal (constInt 0) =<< muxList i cluster
+                      netAnds [outer,inloop,inloop]
+    let pushNeigh = startExpand
+        cp = i
+    inner <- netNot outer -- check above for old value
+    outer' <- netAnd outer =<< netNot startExpand
+    mbtop <- stkTop stk
+    (pushed,outer',stk,cluster,cp,pushNeigh) <- condModMaybe
+      (\en (pushed,outer',stk,clus,cp,pushn) -> do
+        outer' <- netOr outer' en
+        return (pushed,outer',stk,clus,cp,pushn))
+      (\curi en (pushed,outer',stk,clus,cp,pushn) -> do
+        stk  <- stkCondPop en stk
+        en   <- netAnd en =<< equal (constInt 0) =<< muxList curi clus
+        clus <- naiveListWrite en curi cc clus
+        cp   <- mux en cp curi
+        pushn <- netOr pushn en
+        return (pushed,outer',stk,clus,cp,pushn))
+      mbtop inner (pushed,outer',stk,cluster,cp,pushNeigh)
+    cur <- muxList cp l
+    closeVec <- mapM (neighbor cur) l
+    nc <- countTrue closeVec
+    pc <- netAnd pushNeigh =<< greaterThan nc (constInt $ minpts-1)
+    (stk,rpushed) <- foldM (\(stk,rpushed) (x,c,mepushed) -> do
+      c'  <- netAnd pc c
+      c'' <- netAnd c' =<< netNot mepushed
+      mepushed <- netXor mepushed c'' -- netOr c' mepushed
+      stk <- stkCondPush c'' (constInt x) stk
+      return (stk,mepushed:rpushed)) (stk,[]) $ zip3 [0..] closeVec pushed
+    let pushed = reverse rpushed
+    cc <- do c <- netAnds [pc,outer,inloop] -- old outer
+             condAdd c cc (constInt 1)
+    i  <- do c <- netAnd outer' inloop
+             condAdd c i (constInt 1)
+    return (pushed,outer',cc,stk,cluster)
+    ) (pushed,outer,cc,stk,cluster) [1..2*n]
+  return (cluster,cc)
+  where n = length l
+
 
 -- TODO eyeball this a little longer with circitize by the side
 -- Make a new data maker. Fix data range. Run, debug, collect data.
@@ -169,6 +222,6 @@ main = do
   l2 <- getStdRandom (testData 10 10 2)
   let (eps,minpts) = testParams 10 10
       neigh = testNeighbor eps
-      sem   = stkEmpty :: Circuit.Stack.Stack NetUInt
-      nem   = stkEmpty :: SimpleStack NetUInt
-  packAndTest "dbscan" l1 l2 $ dbscanGcil nem neigh minpts
+      --sem   = dbscanGcil (stkEmpty :: Circuit.Stack.Stack NetUInt)
+      sem   = dbscanGcilSimple
+  packAndTest "dbscan" l1 l2 $ sem neigh minpts
