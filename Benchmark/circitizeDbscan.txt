@@ -99,5 +99,6 @@ DBSCAN(p,eps,minpts)
       if |P|>=minpts:
         stk.pushAll P
         if oldOuterloop && i<n: C++
+      else if oldOuterLoop: outerLoop = true
 
     if newOuterloop && i<n: i++

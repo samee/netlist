@@ -25,20 +25,20 @@ dbscan neighbor minpts l = aux (zip [0..] l) M.empty 0 where
     nc = length ne
     ne = [j | (j,x') <- zip [0..] l, neighbor x x']
     cc' = cc+1
-    clus' = dbscanExpand neighbor minpts clus cc' l i
+    clus' = dbscanExpand neighbor minpts clus cc' l ne
 
 -- Assumes initKey is not an outlier
-dbscanExpand neighbor minpts clusInit cc l initKey = aux clusInit [initKey]
+dbscanExpand neighbor minpts clusInit cc l initKeys = aux clusInit initKeys
   where
   asc = zip [0..] l
   aux clus [] = clus
   aux clus (i:is)
-    | M.member i clus = aux clus  is
+    | M.member i clus && clus M.! i /= 0 = aux clus  is
     | nc < minpts     = aux clus' is
     | otherwise       = aux clus' $ ne++is
     where
     clus' = M.insert i cc clus
-    ne = [j | (j,x) <- asc, i/=j, neighbor x curx]
+    ne = [j | (j,x) <- asc, neighbor x curx]
     nc = length ne
     curx = l!!i
 
@@ -47,7 +47,6 @@ dbscanExpand neighbor minpts clusInit cc l initKey = aux clusInit [initKey]
 
 -- 'emptystk' here is just a hack into the type system, so that I can
 --   specify the internal stack type being used when calling the function
--- TODO put an O(n) stack length cap with a "pushed" flag?
 dbscanGcil :: (StackType s,Swappable a) 
            => s NetUInt -> (a -> a -> NetWriter NetBool) -> Int -> [a]
            -> NetWriter ([NetUInt],NetUInt)
@@ -68,7 +67,7 @@ dbscanGcil emptystk neighbor minpts l = do
     outerLoop' <- netAnd outerLoop =<< netNot startExpand
     (cluster,outerLoop',stk,checkNeighbor,cp,i) <- condModMaybe 
       (\en (clus,ol',stk,cnegh,cp,i) -> do 
-        ol' <- netAnd ol' =<< netNot en
+        ol' <- netOr ol' en
         return (clus,ol',stk,cnegh,cp,i))
       (\curi en (clus,ol',stk,cnegh,cp,i) -> do
         stk  <- stkCondPop en stk
@@ -100,34 +99,37 @@ dbscanGcil emptystk neighbor minpts l = do
 
 -- Feels like I am learning programming for the first time:
 --   rampant code and bug duplication. TODO cleanup
-dbscanGcilSimple :: (Swappable a) 
-           => (a -> a -> NetWriter NetBool) -> Int -> [a]
+dbscanGcilSimple :: (StackType s, Swappable a) 
+           => s NetUInt -> (a -> a -> NetWriter NetBool) -> Int -> [a]
            -> NetWriter ([NetUInt],NetUInt)
-dbscanGcilSimple neighbor minpts l = do
-  let cc      = constInt 0
+-- 'emptystk' here is just a hack into the type system, so that I can
+--   specify the internal stack type being used when calling the function
+dbscanGcilSimple emptystk neighbor minpts l = do
+  let cc      = constIntW (valueSize n) 0 -- actually, ceil valueSize/minpts TODO
       cluster = replicate n (constIntW (valueSize n) 0)
-      stk     = stkCapLength n $ stkEmpty :: SimpleStack NetUInt
+      stk     = stkCapLength n emptystk
       i       = constIntW (valueSize n) 0
       outer   = netTrue
       pushed  = replicate n netFalse
-  (pushed,outer,cc,stk,cluster) <- foldM (\(pushed,outer,cc,stk,cluster) _ -> do
+  (pushed,outer,cc,stk,cluster,i) 
+    <- foldM (\(pushed,outer,cc,stk,cluster,i) _ -> do
     inloop <- greaterThan (constInt n) i
     startExpand <- do c <- equal (constInt 0) =<< muxList i cluster
-                      netAnds [outer,inloop,inloop]
+                      netAnds [outer,c,inloop]
     let pushNeigh = startExpand
-        cp = i
-    inner <- netNot outer -- check above for old value
+        cp = i; oldOuter = outer
+    inner  <- netNot outer
     outer' <- netAnd outer =<< netNot startExpand
-    mbtop <- stkTop stk
+    mbtop  <- stkTop stk
     (pushed,outer',stk,cluster,cp,pushNeigh) <- condModMaybe
       (\en (pushed,outer',stk,clus,cp,pushn) -> do
         outer' <- netOr outer' en
         return (pushed,outer',stk,clus,cp,pushn))
       (\curi en (pushed,outer',stk,clus,cp,pushn) -> do
-        stk  <- stkCondPop en stk
-        en   <- netAnd en =<< equal (constInt 0) =<< muxList curi clus
-        clus <- naiveListWrite en curi cc clus
-        cp   <- mux en cp curi
+        stk   <- stkCondPop en stk
+        en    <- netAnd en =<< equal (constInt 0) =<< muxList curi clus
+        clus  <- naiveListWrite en curi cc clus
+        cp    <- mux en cp curi
         pushn <- netOr pushn en
         return (pushed,outer',stk,clus,cp,pushn))
       mbtop inner (pushed,outer',stk,cluster,cp,pushNeigh)
@@ -141,13 +143,15 @@ dbscanGcilSimple neighbor minpts l = do
       mepushed <- netXor mepushed c'' -- netOr c' mepushed
       stk <- stkCondPush c'' (constInt x) stk
       return (stk,mepushed:rpushed)) (stk,[]) $ zip3 [0..] closeVec pushed
+    notpc <- netNot pc
+    outer' <- netOr outer' =<< netAnds [inloop,notpc,pushNeigh,oldOuter]
     let pushed = reverse rpushed
-    cc <- do c <- netAnds [pc,outer,inloop] -- old outer
+    cc <- do c <- netAnds [pc,oldOuter,inloop]
              condAdd c cc (constInt 1)
     i  <- do c <- netAnd outer' inloop
              condAdd c i (constInt 1)
-    return (pushed,outer',cc,stk,cluster)
-    ) (pushed,outer,cc,stk,cluster) [1..2*n]
+    return (pushed,outer',cc,stk,cluster,i)
+    ) (pushed,outer,cc,stk,cluster,i) [1..2*n]
   return (cluster,cc)
   where n = length l
 
@@ -217,6 +221,16 @@ packAndTest name serverInput clientInput driver = burnBenchmark name $ do
 
 type Points = (NetUInt,NetUInt)
 
+{-
+main = do let cdim = 2; cc = 3; pic = 10
+          l1 <- getStdRandom (testData cdim pic cc)
+          l2 <- getStdRandom (testData cdim pic cc)
+          let (eps,minpts) = testParams cdim pic
+              neigh p q = abs (fst p - fst q) + abs (snd p - snd q) <= eps
+          putStrLn $ show $ minpts
+          putStrLn $ show $ dbscan neigh minpts (l1++l2)
+-}
+
 main = forM [10,20,40,80,160] $ \pic -> do
   let cdim = 10; cc = 3
   l1 <- getStdRandom (testData cdim pic cc)
@@ -224,7 +238,7 @@ main = forM [10,20,40,80,160] $ \pic -> do
   let (eps,minpts) = testParams cdim pic
       neigh = testNeighbor eps
       sem   = dbscanGcil (stkEmpty :: Circuit.Stack.Stack NetUInt)
-      nem   = dbscanGcilSimple
+      nem   = dbscanGcilSimple (stkEmpty :: SimpleStack NetUInt)
       n     = 2*cc*pic
   packAndTest ("dbscan"++show n) l1 l2 $ sem neigh minpts
   packAndTest ("dbscanSimple"++show n) l1 l2 $ nem neigh minpts
