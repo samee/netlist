@@ -237,7 +237,7 @@ main = forM [10,20,40,80,160] $ \pic -> do
   l2 <- getStdRandom (testData cdim pic cc)
   let (eps,minpts) = testParams cdim pic
       neigh = testNeighbor eps
-      sem   = dbscanGcil (stkEmpty :: Circuit.Stack.Stack NetUInt)
+      sem   = dbscanGcilSimple (stkEmpty :: Circuit.Stack.Stack NetUInt)
       nem   = dbscanGcilSimple (stkEmpty :: SimpleStack NetUInt)
       n     = 2*cc*pic
   packAndTest ("dbscan"++show n) l1 l2 $ sem neigh minpts
