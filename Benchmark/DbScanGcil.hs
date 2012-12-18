@@ -231,7 +231,7 @@ main = do let cdim = 2; cc = 3; pic = 10
           putStrLn $ show $ dbscan neigh minpts (l1++l2)
 -}
 
-main = forM [10,20,40,80,160] $ \pic -> do
+main = forM [10,20,40,80] $ \pic -> do
   let cdim = 10; cc = 3
   l1 <- getStdRandom (testData cdim pic cc)
   l2 <- getStdRandom (testData cdim pic cc)

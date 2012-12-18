@@ -31,6 +31,25 @@ scanOut(p,&C,&pushed):
       stk.push(p')
 
 
+DBSCAN_pulped(p):
+  C=0
+  cluster[]=0
+  for each i:
+    if cluster[i]!=0: continue
+    P = neighbors(i);
+    if |P|<minpts: continue
+    C++;
+    foreach p in P: if cluster[p]!=0:
+      cluster[p]=C
+      stk.push(p)
+    while(!stk.empty())
+      cur=stk.pop();
+      P = neighbors(cur)
+      if |P| < minpts: continue
+      foreach p in P: if cluster[p]!=0:
+        cluster[p]=C
+        stk.push(p)
+
 C=0
 pushed[]=false
 outer = true
