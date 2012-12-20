@@ -17,7 +17,7 @@ newtype StreamWriter w m a
 
 runStreamWriter sink a = runner a sink
 
-instance (Monad m,Monoid w) => Monad (StreamWriter w m) where
+instance Monad m => Monad (StreamWriter w m) where
   return x = lift $ return x
   m >>= f = StreamWriter (\ab -> 
     runStreamWriter ab m >>= runStreamWriter ab . f)

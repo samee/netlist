@@ -84,8 +84,7 @@ burnTestCase caseName cktlister = do
   counting <- newIORef True
   andCount <- newIORef 0
   successId <- writeCaseFiles caseName $ \cktFile serverInfile clientInfile ->
-    -- forM_ bytecode $ \bc -> case bc of
-    flip runGcilMonad addOut $ \bcfrags -> forM_ bcfrags $ \bc -> case bc of
+    flip runGcilMonad addOut $ \bc -> case bc of
       InputInstr input   -> do
         writeInValue serverInfile clientInfile input
         writeInSpec cktFile input
@@ -102,7 +101,6 @@ burnTestCase caseName cktlister = do
   where
   addOut = do a <- cktlister
               liftNet $ newOutput =<< bitify a
-  -- (successId,bytecode) = runGcilMonad addOut
 
 -- Does not expect a "success flag" in the return value
 burnBenchmark :: String -> GcilMonad a -> IO ()
@@ -125,20 +123,18 @@ countGates bytecode = sums 0 0 filterbyte where
   filterIgnored False (_:tail)               = filterIgnored False tail
   
 
-type GcilMonad = StreamWriter [GcilInstr] (StateT Int IO)
--- gcilList :: GcilMonad a -> [GcilInstr]
--- gcilList ckt = evalState (execWriterT ckt) 1
+-- If I have to generalize this to arbitrary monads later, I might as well
+--   change StreamWriter to use existentials. Will simplify NetList.hs
+type GcilMonad = StreamWriter GcilInstr (StateT Int IO)
 
--- runGcilMonad :: GcilMonad a -> (a,[GcilInstr])
--- runGcilMonad ckt = evalState (runWriterT ckt) 1
-runGcilMonad :: ([GcilInstr] -> IO ()) -> GcilMonad a -> IO a
-runGcilMonad out ckt = evalStateT (runStreamWriter (liftIO.out) ckt) 1
+runGcilMonad :: (GcilInstr -> IO ()) -> GcilMonad a -> IO a
+runGcilMonad out ckt = evalStateT (runStreamWriter (lift.out) ckt) 1
 
 gcilOutBits x = liftNet $ newOutput =<< bitify x
 
 gcilTestInput party width value = do id <- lift $ state (\id -> (id,id+1))
                                      let l = InputSpec party width id value
-                                     tell [InputInstr l]
+                                     tell $ InputInstr l
                                      return l
 
 toNet v = conjureBits (inputWidth v) (varId v)
@@ -158,22 +154,15 @@ liftNet nw = StreamWriter (\out -> do
   put endId
   return result
   )
-                          {-
-liftNet nw = do initId <- lift $ get
-                let ((result,endId),nl) = netList addend initId
-                tell $ map CalcInstr nl
-                lift $ put endId
-                return result
-                -}
   where addend = do r <- nw
                     endId <- nextBitId
                     return (r,endId)
-        sink out = flip evalStateT 0 . out . map CalcInstr
+        sink out = flip evalStateT 0 . out . CalcInstr
 
 ignoreAndsUsed :: GcilMonad a -> GcilMonad a
-ignoreAndsUsed mr = do tell [StartIgnoreStats]
+ignoreAndsUsed mr = do tell StartIgnoreStats
                        r <- mr
-                       tell [EndIgnoreStats]
+                       tell EndIgnoreStats
                        return r
 
 andCost (OutputBits _) = 0

@@ -1,7 +1,8 @@
+{-# LANGUAGE PolymorphicComponents #-}
 module Circuit.NetList
 ( NetInstr(..), Opcode(..), NetBinOp(..), NetUnOp(..), ExtendType(..)
 , NetWriter
---, netList
+, netList
 , runNetWriter
 , addDeallocs -- Forces entire list to be instantiated. Use for small lists only
 , NetBool
@@ -101,11 +102,12 @@ proper backend. Do this for one test at a time, possibly starting with Stack.
 Remove/rename Gcil.Compiler. Bye bye!
 -}
 
-import Control.Monad.State.Strict
-import Control.Monad.StreamWriter
-import Data.Bits
-import Data.Maybe
-import Data.Tuple
+import           Control.Monad.State.Strict
+import           Control.Monad.StreamWriter
+import qualified Control.Monad.Writer as WM
+import           Data.Bits
+import           Data.Maybe
+import           Data.Tuple
 import qualified Data.Set as S
 
 import Util
@@ -132,18 +134,33 @@ data ExtendType = SignExtend | ZeroExtend
 
 newtype NetState = NetState { nextSym :: Int }
 
--- I could have used existentials to lock this down and prevent exposing IO
-type NetWriter = StreamWriter [NetInstr] (StateT NetState IO)
+-- The type NetWriter x appears so often in type signatures that it made sense
+--   to shorten it as much as possible, hence the use of existentials.
+--   Without this, I would have had to use Monad m => ... -> NetWriter m a
+--   instead of just ... -> NetWriter a for every type signature. And I would 
+--   have to change a lot of signatures like that. The other way would have
+--   been to use MultiParamTypeClasses, and even then it wouldn't be quite as
+--   clean.
+newtype NetWriter a = NetWriter { swof :: forall m. Monad m 
+                 => StreamWriter [NetInstr] (StateT NetState m) a }
 
--- TODO replace this with the new StreamWriter interface
--- netList :: NetWriter a -> Int -> (a,[NetInstr])
--- netList ckt id = evalState (runWriterT ckt) (NetState id)
-runNetWriter :: ([NetInstr] -> IO()) -> NetWriter a -> Int -> IO a
-runNetWriter out ckt id = evalStateT (runStreamWriter out' ckt) (NetState id)
-  where out' = liftIO . out
+instance Monad NetWriter where
+  return x = NetWriter $ return x
+  a >>= f = NetWriter $ swof a >>= swof . f
 
--- TODO remove this function, replace all this with non-monadic solutions
--- ... someday. Till then, it helps save memory space
+runNetWriter :: Monad m => (NetInstr -> m()) -> NetWriter a -> Int -> m a
+runNetWriter out ckt id = evalStateT (runStreamWriter out' ckt') (NetState id)
+  where out' = lift . mapM_ out
+        ckt' = swof ckt
+
+-- Do not use this on large NetWriter actions, the output list can get too large
+--   to fit in memory. Instead, it's better to stream through the instructions
+--   using runNetWriter.
+netList :: NetWriter a -> Int -> (a,[NetInstr])
+netList ckt id = WM.runWriter $ runNetWriter (WM.tell.(:[])) ckt id
+
+-- Need to remove this function, replace all this with non-monadic solutions
+-- ... someday. Till then, it helps save memory space in Circuit.NetList.Dimacs
 addDeallocs :: [NetBits] -> [NetInstr] -> [NetInstr]
 addDeallocs out = reverse.aux (S.fromList (map varid out))
                          .reverse.filter notDealloc where
@@ -322,10 +339,11 @@ constBits w v = NetBits w (ConstMask v)
 conjureBits w id = NetBits { bitWidth = w, bitValues = VarId id }
 
 nextBitId :: NetWriter Int
-nextBitId = lift $ gets nextSym
+nextBitId = NetWriter $ lift $ gets nextSym
 
 newBits :: Int -> NetWriter NetBits
-newBits w = do id <- lift $ state $ \(NetState id) -> (id,NetState $ id+1)
+newBits w = do id <- NetWriter $ lift $ state 
+                               $ \(NetState id) -> (id,NetState $ id+1)
                return $ conjureBits w id
 
 singleBitOutput (BinOp BitEq _ _) = True
@@ -336,7 +354,7 @@ singleBitOutput (UnOp _ _) = True
 singleBitOutput _ = False
 
 emit opcode = do v <- newBits $ resultWidth opcode
-                 tell $ [AssignResult v opcode]
+                 NetWriter $ tell $ [AssignResult v opcode]
                  return v
 
 resultWidth (ExtendOp _ w v) = max w $ bitWidth v
@@ -378,7 +396,7 @@ newOutput :: NetBits -> NetWriter Int
 newOutput a = do a' <- if knownConst a 
                           then emit $ BinOp BitXor a (constBits (bitWidth a) 0)
                           else return a
-                 tell [OutputBits a']
+                 NetWriter $ tell [OutputBits a']
                  return $ varid a'
 
 lsb a | bitWidth a == 1 = return . NetBool . bitValues $ a
