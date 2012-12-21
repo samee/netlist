@@ -107,21 +107,19 @@ burnBenchmark :: String -> GcilMonad a -> IO ()
 burnBenchmark caseName cktlister = burnTestCase caseName padout where
   padout = cktlister >> return netTrue
 
-countGates :: [GcilInstr] -> (Int,Int)
-countGates bytecode = sums 0 0 filterbyte where
-  sums ts as [] = (ts,as)
-  sums ts as (h:t) = ts' `seq` as' `seq` sums ts' as' t where
-    ts' = onlynet totalCost h + ts
-    as' = onlynet andCost h + as
-  onlynet f (CalcInstr x) = f x
-  onlynet _ _ = 0
-  filterbyte = filterIgnored True bytecode
-  filterIgnored _    []                      = []
-  filterIgnored True (StartIgnoreStats:tail) = filterIgnored False tail
-  filterIgnored True (h:tail)                = h:filterIgnored True tail
-  filterIgnored False (EndIgnoreStats:tail)  = filterIgnored True tail
-  filterIgnored False (_:tail)               = filterIgnored False tail
-  
+data CktStats = CktStats { totalSum :: !Int, andSum :: !Int, inIgnore :: !Bool }
+
+countGates :: GcilMonad () -> (Int,Int)
+countGates ckt = costPair $ execState (runGcilMonad sink ckt) init where
+  sink StartIgnoreStats = modify $ \s -> s{inIgnore=True}
+  sink EndIgnoreStats   = modify $ \s -> s{inIgnore=False}
+  sink (CalcInstr x) = do ig <- gets inIgnore
+                          when (not ig) $ modify $ aggregate x
+  costPair s = (totalSum s,andSum s)
+  init = CktStats 0 0 False
+  aggregate x s = s { totalSum = totalSum s + totalCost x
+                    , andSum   = andSum s   + andCost x
+                    }
 
 type GcilMonad a = StateT Int (StreamWriter GcilInstr) a
 

@@ -19,7 +19,7 @@ import Util
 localWideAngle thMax l = maximum [f a b | a<-l, b<-l, a<=b] where
   f a b = min (b-a) (thMax-b+a)
 
--- This is currently unused
+-- This is currently unused.
 -- Was having some mysterious memory problems with the other version
 localWideAngle2 thMax l = aux 0 0 1 where
   aux result j i | i>=n = result
