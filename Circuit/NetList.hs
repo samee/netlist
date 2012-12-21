@@ -148,6 +148,8 @@ instance Monad NetWriter where
   return x = NetWriter $ return x
   a >>= f = NetWriter $ swof a >>= swof . f
 
+instance Functor NetWriter where fmap = liftM
+
 runNetWriter :: Monad m => (NetInstr -> m()) -> NetWriter a -> Int -> m a
 runNetWriter out ckt id = evalStateT (runStreamWriter out' ckt') (NetState id)
   where out' = lift . mapM_ out

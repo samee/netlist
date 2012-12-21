@@ -24,9 +24,10 @@ outputBlinded mb | knownNothing mb = return ()
                  | otherwise = do 
                     np <- netIsNothing mb
                     (d,f) <- mux np (netFromJust mb) (constInt 0, constInt 0)
-                    newOutput =<< bitify np
-                    newOutput =<< bitify d
-                    newOutput =<< bitify f
+                    void $ do
+                      newOutput =<< bitify np
+                      newOutput =<< bitify d
+                      newOutput =<< bitify f
 
 swapIfGreater a b = do c <- greaterThan a b
                        condSwap c a b
@@ -110,6 +111,10 @@ randomList ulim n rgen = (aux n rgen1, rgen2) where
   aux 0 _ = []
   aux n rg = x : aux (n-1) rg' where (x,rg') = randomR (0,ulim-1) rg
 
+-- Warning: sorted versions of uniformly randomly selected lists have
+--   different distributions compared to a uniformly randomly selected
+--   sorted list. Then again, since our runtimes do not depend on private
+--   inputs, who cares!
 randomSortedList ulim n rgen = (sort l,rgen') where
   (l,rgen') = randomList ulim n rgen
 
