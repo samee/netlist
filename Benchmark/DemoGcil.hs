@@ -6,6 +6,7 @@ import qualified Data.Array as A
 import Data.List
 import Debug.Trace
 import System.Random
+import System.IO
 
 import Circuit.NetList
 import Circuit.NetList.Gcil
@@ -18,6 +19,8 @@ import Util
 localWideAngle thMax l = maximum [f a b | a<-l, b<-l, a<=b] where
   f a b = min (b-a) (thMax-b+a)
 
+-- This is currently unused
+-- Was having some mysterious memory problems with the other version
 localWideAngle2 thMax l = aux 0 0 1 where
   aux result j i | i>=n = result
                  | j<i && f j i <= f (j+1) i = aux result' (j+1) i
@@ -45,8 +48,9 @@ wideAngleCase algo (theta1,theta2,thMax) = do
     r <- algo theta (constInt thMax)
     newOutput =<< bitify r
     return r
-  ignoreAndsUsed $ liftNet $ equal result (constInt expected)
-  where expected = localWideAngle2 thMax $ theta1++theta2
+  ignoreAndsUsed $ liftNet 
+                 $ newOutput =<< bitify =<< equal result (constInt expected)
+  where expected = localWideAngle thMax $ theta1++theta2
         thetaWidth = valueSize thMax
 
 {-
@@ -98,10 +102,10 @@ traceMerge x@(l1,l2,_) = traceShow (runIdentity $ Sort.merge cx l1 l2) x
   where 
   cx a b = return $ if a<b then (a,b) else (b,a)
 
--- The Naive benchmarks are running out of memory on my laptop :-/
-main = forM_ [128,256,512,1024,2048] $ \n -> do
+main = do hSetBuffering stdout LineBuffering
+          forM_ [128,256,512,1024,2048] $ \n -> do
             pack <- getStdRandom (randomWideAngleTest 256 n)
-            burnTestCase ("wideAngleSmart"++show n) 
+            burnBenchmark ("wideAngleSmart"++show n) 
               $ wideAngleCase wideAngle pack
-            burnTestCase ("wideAngleNaive"++show n)
+            burnBenchmark ("wideAngleNaive"++show n)
               $ wideAngleCase wideAngleNaive pack

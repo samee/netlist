@@ -128,9 +128,6 @@ addToArray arr cmds = do (elts',_,Just(_,last)) <- CA.applyOps opSpecs elts cmds
                          return $ listArray $ init elts' ++ [last]
   where
   elts = elems arr
-  opSpecs :: NetInt i => OpSpecs NetWriter i (NetUInt,i) (NetUInt,i) 
-                     (Maybe(NetUInt,i)) (NetMaybe(NetUInt,i)) 
-                     (NetMaybe(NetUInt,i))
   opSpecs = OpSpecs { castEltToMix = (\i x -> return (constInt i,x))
                     , castOpToMix  = (\_ x -> return x)
                     , cswpArrayIndex = byAddr

@@ -1,4 +1,3 @@
-{-# LANGUAGE PolymorphicComponents #-}
 module Circuit.NetList
 ( NetInstr(..), Opcode(..), NetBinOp(..), NetUnOp(..), ExtendType(..)
 , NetWriter
@@ -134,26 +133,11 @@ data ExtendType = SignExtend | ZeroExtend
 
 newtype NetState = NetState { nextSym :: Int }
 
--- The type NetWriter x appears so often in type signatures that it made sense
---   to shorten it as much as possible, hence the use of existentials.
---   Without this, I would have had to use Monad m => ... -> NetWriter m a
---   instead of just ... -> NetWriter a for every type signature. And I would 
---   have to change a lot of signatures like that. The other way would have
---   been to use MultiParamTypeClasses, and even then it wouldn't be quite as
---   clean.
-newtype NetWriter a = NetWriter { swof :: forall m. Monad m 
-                 => StreamWriter [NetInstr] (StateT NetState m) a }
-
-instance Monad NetWriter where
-  return x = NetWriter $ return x
-  a >>= f = NetWriter $ swof a >>= swof . f
-
-instance Functor NetWriter where fmap = liftM
+type NetWriter a = StateT NetState (StreamWriter [NetInstr]) a
 
 runNetWriter :: Monad m => (NetInstr -> m()) -> NetWriter a -> Int -> m a
-runNetWriter out ckt id = evalStateT (runStreamWriter out' ckt') (NetState id)
-  where out' = lift . mapM_ out
-        ckt' = swof ckt
+runNetWriter out ckt id = runStreamWriter out' $ evalStateT ckt (NetState id)
+  where out' = mapM_ out
 
 -- Do not use this on large NetWriter actions, the output list can get too large
 --   to fit in memory. Instead, it's better to stream through the instructions
@@ -341,11 +325,10 @@ constBits w v = NetBits w (ConstMask v)
 conjureBits w id = NetBits { bitWidth = w, bitValues = VarId id }
 
 nextBitId :: NetWriter Int
-nextBitId = NetWriter $ lift $ gets nextSym
+nextBitId = gets nextSym
 
 newBits :: Int -> NetWriter NetBits
-newBits w = do id <- NetWriter $ lift $ state 
-                               $ \(NetState id) -> (id,NetState $ id+1)
+newBits w = do id <- state $ \(NetState id) -> (id,NetState $ id+1)
                return $ conjureBits w id
 
 singleBitOutput (BinOp BitEq _ _) = True
@@ -356,7 +339,7 @@ singleBitOutput (UnOp _ _) = True
 singleBitOutput _ = False
 
 emit opcode = do v <- newBits $ resultWidth opcode
-                 NetWriter $ tell $ [AssignResult v opcode]
+                 lift $ tell $ [AssignResult v opcode]
                  return v
 
 resultWidth (ExtendOp _ w v) = max w $ bitWidth v
@@ -398,7 +381,7 @@ newOutput :: NetBits -> NetWriter Int
 newOutput a = do a' <- if knownConst a 
                           then emit $ BinOp BitXor a (constBits (bitWidth a) 0)
                           else return a
-                 NetWriter $ tell [OutputBits a']
+                 lift $ tell [OutputBits a']
                  return $ varid a'
 
 lsb a | bitWidth a == 1 = return . NetBool . bitValues $ a

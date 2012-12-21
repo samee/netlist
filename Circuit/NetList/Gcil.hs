@@ -123,18 +123,16 @@ countGates bytecode = sums 0 0 filterbyte where
   filterIgnored False (_:tail)               = filterIgnored False tail
   
 
--- If I have to generalize this to arbitrary monads later, I might as well
---   change StreamWriter to use existentials. Will simplify NetList.hs
-type GcilMonad = StreamWriter GcilInstr (StateT Int IO)
+type GcilMonad a = StateT Int (StreamWriter GcilInstr) a
 
-runGcilMonad :: (GcilInstr -> IO ()) -> GcilMonad a -> IO a
-runGcilMonad out ckt = evalStateT (runStreamWriter (lift.out) ckt) 1
+runGcilMonad :: Monad m => (GcilInstr -> m()) -> GcilMonad a -> m a
+runGcilMonad out ckt = runStreamWriter out $ evalStateT ckt 1
 
 gcilOutBits x = liftNet $ newOutput =<< bitify x
 
-gcilTestInput party width value = do id <- lift $ state (\id -> (id,id+1))
+gcilTestInput party width value = do id <- state (\id -> (id,id+1))
                                      let l = InputSpec party width id value
-                                     tell $ InputInstr l
+                                     lift $ tell $ InputInstr l
                                      return l
 
 toNet v = conjureBits (inputWidth v) (varId v)
@@ -143,26 +141,20 @@ testInt :: NetInt i => InputParty -> Int -> Int -> GcilMonad i
 testInt party width value 
   = liftM (intFromBits.toNet) $ gcilTestInput party width value
 
--- f = out . mapCalcInstr :: [NetInstr] -> State Int IO ()
--- I need something of type [NetInstr] -> IO ()
--- f x :: State Int IO ()
--- evalStateT (f x) 0 :: IO ()
 liftNet :: NetWriter a -> GcilMonad a
-liftNet nw = StreamWriter (\out -> do
+liftNet nw = do
   initId <- get
-  (result,endId) <- liftIO $ runNetWriter (sink out) addend initId
+  (result,endId) <- runNetWriter (lift.tell.CalcInstr) addend initId
   put endId
   return result
-  )
   where addend = do r <- nw
                     endId <- nextBitId
                     return (r,endId)
-        sink out = flip evalStateT 0 . out . CalcInstr
 
 ignoreAndsUsed :: GcilMonad a -> GcilMonad a
-ignoreAndsUsed mr = do tell StartIgnoreStats
+ignoreAndsUsed mr = do lift $ tell StartIgnoreStats
                        r <- mr
-                       tell EndIgnoreStats
+                       lift $ tell EndIgnoreStats
                        return r
 
 andCost (OutputBits _) = 0
