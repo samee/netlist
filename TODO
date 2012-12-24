@@ -1,0 +1,6 @@
+
+countGates is in Test/{Queue,Stack,Array}Gcil
+ == Queue part is done. Do the same with stack and array
+Move Simple stack from benchmark to Test.*
+Reenable histogram-rectangle test, countGates
+Stack Queue into benchmark from test
