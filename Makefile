@@ -102,7 +102,6 @@ $(LONG_GCILLOGS): tmp/%-long.log: tmp bin/$(REGRDIR)/%.$(OSUFF)
 	./TestCircuits $*-long $(RTSOPTSF) >> $@
 	makeutils/GcilTest $(GCPARSER_PATH) $@
 
-# TODO change source files to Main module
 $(GCIL_BENCHES): tmp/%-bench.log: tmp Benchmark/%.hs bin/Benchmark/%.$(OSUFF)
 	./$* $(RTSOPTSF) > $@
 	rm $*
@@ -132,4 +131,7 @@ $(LONG_NATIVELOGS): tmp/%-long.log: tmp bin/$(REGRDIR)/%.$(OSUFF)
 	./TestCircuits $*-long $(RTSOPTSF) >> $@
 	@grep -q "Tests passed" $@ || echo "    Test failed"
 
-$(NATIVES_BENCHES): tmp/%-bench-log: tmp Benchmark/%.hs ; # TODO
+$(NATIVE_BENCHES): tmp/%-bench.log: tmp Benchmark/%.hs bin/Benchmark/%.$(OSUFF)
+	@date > $@
+	./$* >> $@
+	rm $*
