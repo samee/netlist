@@ -41,7 +41,7 @@ empty = Queue { buffer = replicate buffSize netNoth
               }
 
 
-fromList :: Swappable g => [g] -> Queue g
+fromList :: [g] -> Queue g
 fromList [] = empty
 fromList [x] = empty { buffer = [netNoth,netNoth,netNoth
                                 ,netJust x,netNoth,netNoth]

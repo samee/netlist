@@ -4,10 +4,10 @@ import Control.Monad.State
 import Data.Map as M
 import System.Random
 
-import Benchmark.Util
 import Circuit.NetList
 import Circuit.NetList.Gcil
 import qualified Circuit.Stack
+import Test.Util.Simple
 import Util
 
 -- This version of DBSCAN does not return core vs non-core point records

@@ -115,6 +115,7 @@ countGates ckt = costPair $ execState (runGcilMonad sink ckt) init where
   sink EndIgnoreStats   = modify $ \s -> s{inIgnore=False}
   sink (CalcInstr x) = do ig <- gets inIgnore
                           when (not ig) $ modify $ aggregate x
+  sink (InputInstr _) = return ()
   costPair s = (totalSum s,andSum s)
   init = CktStats 0 0 False
   aggregate x s = s { totalSum = totalSum s + totalCost x

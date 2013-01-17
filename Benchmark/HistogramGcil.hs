@@ -9,15 +9,12 @@ import Util
 
 {-
 
-Storytime: two team of athletes from two different countries will compete in
-  this big upcoming competition.  The make up of their team is still secret.
-  However, the two want to see how their teams compare against each other. Their
-  comparison metric is as follows: they sort the atheletes of their respective
-  teams by their average running speeds. Then they compare the fastest of one
-  team vs fastest of the other, the 2nd fastest of one vs the 2nd fastest of
-  the other, etc. Finally, they want a frequency list of these speed 
-  differences. E.g., in these comparisons, we saw a speed difference of +10 m/s
-  4 times, +5 m/s 9 times, -5 m/s 20 times etc.
+I want to make a histogram of X[i] values.
+  The data is stored by two different parties in shares A[i], B[i]
+  such that X[i]=A[i]+B[i]
+  The code I want to run:
+  for(i=0;i<n;++i) count[A[i]+B[i]]++;
+
 -}
 
 outputBlinded mb | knownNothing mb = return ()
@@ -32,9 +29,15 @@ outputBlinded mb | knownNothing mb = return ()
 swapIfGreater a b = do c <- greaterThan a b
                        condSwap c a b
 
+swapIfGreater2 (a1,a2) (b1,b2) = do c <- greaterThan a2 b2
+                                    c <- chainGreaterThan c a1 b1
+                                    condSwap c (a1,a2) (b1,b2)
+
 nothingIsGreater ja jb = do pa <- netIsNothing ja
                             pb <- netIsNothing jb
-                            c  <- netAnd pa =<< netNot pb
+                            c  <- greaterThan (fst $ netFromJust ja)
+                                              (fst $ netFromJust jb)
+                            c  <- chainGreaterThan c pa pb
                             condSwap c ja jb
 
 adjSweep :: Monad m => (a -> a -> m(a,a)) -> [a] -> m [a]
@@ -43,19 +46,32 @@ adjSweep _ [a] = return [a]
 adjSweep f (a1:a2:a) = do (a1',a2') <- f a1 a2
                           liftM (a1':) $ adjSweep f (a2':a)
 
--- It is standard practice to blind netMaybe output values
-speedDifferences :: [NetSInt] -> [NetSInt] 
-                 -> NetWriter [NetMaybe (NetSInt,NetUInt)]
-speedDifferences a b = do
+type UIntSorter = [NetUInt] -> NetWriter [NetUInt]
+
+-- It is standard practice to blind netMaybe output values (done later)
+sumFreqsCustomSort :: UIntSorter -> [NetUInt] -> [NetUInt]
+                   -> NetWriter [NetMaybe (NetUInt,NetUInt)]
+sumFreqsCustomSort firstSort a b = do
   -- Assume they are sorted
-  d <- forM (zip a b) $ \(a,b) -> sub a b
-  d <- Circuit.Sorter.sort swapIfGreater d
-  fscattered <- adjSweep adjSum $ map justOne d
+  ss <- firstSort <=< forM (zip a b) $ \(a,b) -> add a b
+  fscattered <- adjSweep adjSum $ map justOne ss
   -- For no apparent reason, I felt like sorting this here :-/
   Circuit.Sorter.sort nothingIsGreater fscattered
   where
   w = valueSize $ length a
-  justOne x = netJust (x, constIntW w 1)
+  justOne s = netJust (s, constIntW w 1)
+
+sumFreqs = sumFreqsCustomSort $ Circuit.Sorter.sort swapIfGreater
+sumFreqsStable = sumFreqsCustomSort stableSort
+
+-- FIXME this is why CmpSwap should have *separate* functions for compare 
+--  and swap. I could have made a general function for stableSort
+stableSort :: [NetUInt] -> NetWriter [NetUInt]
+stableSort l = liftM (map fst) $ Circuit.Sorter.sort swapIfGreater2 pairs
+  where
+  w = indexSize $ length l
+  pairs = zip l $ map (constIntW w) [0..] :: [(NetUInt,NetUInt)]
+
 
 adjSum ja jb = do keySame <- equal d1 d2
                   sum <- add f1 f2
@@ -72,38 +88,39 @@ cursorSweep _ _ [] = return []
 cursorSweep f a (b:bs) = do (a',b') <- f a b
                             liftM (b':) $ cursorSweep f a' bs
 
-speedDifferencesBad :: [NetSInt] -> [NetSInt] 
-                    -> NetWriter [NetMaybe (NetSInt,NetUInt)]
-speedDifferencesBad a b = do
+sumFreqsNaive :: [NetUInt] -> [NetUInt] 
+              -> NetWriter [NetMaybe (NetUInt,NetUInt)]
+sumFreqsNaive a b = do
   -- Assume they are sorted
-  d <- forM (zip a b) $ \(a,b) -> sub a b
-  foldM addDfPairs init d
+  s <- forM (zip a b) $ \(a,b) -> add a b
+  foldM addKvPairs init s
   where
   w = valueSize $ length a
   init = replicate (length a) netNoth
-  addDfPairs pairList d = cursorSweep addStep (netJust d) pairList
-  addStep :: NetMaybe NetSInt -> NetMaybe (NetSInt,NetUInt)
-          -> NetWriter (NetMaybe NetSInt, NetMaybe (NetSInt,NetUInt))
-  addStep mbD mbPair 
-    | knownNothing mbD    = return (mbD, mbPair)
+  addKvPairs pairList s = cursorSweep addStep (netJust s) pairList
+  addStep :: NetMaybe NetUInt -> NetMaybe (NetUInt,NetUInt)
+          -> NetWriter (NetMaybe NetUInt, NetMaybe (NetUInt,NetUInt))
+  addStep mbS mbPair 
+    | knownNothing mbS    = return (mbS, mbPair)
     | knownNothing mbPair = return ( netNoth
-                                   , netJust(netFromJust mbD,constIntW w 1))
+                                   , netJust(netFromJust mbS,constIntW w 1))
     | otherwise = do
-        case1'<- netNot =<< netIsNothing mbD
+        case1'<- netNot =<< netIsNothing mbS
         case2 <- netAnd case1' =<< netIsNothing mbPair
-        case3 <- bind2 netAnd (netXor case1' case2) (equal d pd)
+        case3 <- bind2 netAnd (netXor case1' case2) (equal s ps)
         pf'   <- condAdd case3 (constInt 1) pf
         op    <- netOr case2 case3
-        mbD'  <- condZap op mbD
-        mux op (mbD,mbPair) (mbD',netJust (pd,pf'))
+        mbS'  <- condZap op mbS
+        mbPair' <- mux op mbPair (netJust (s,pf'))
+        return (mbS',mbPair')
         where
-        d = netFromJust mbD
-        (pd,pf) = netFromJust mbPair
+        s = netFromJust mbS
+        (ps,pf) = netFromJust mbPair
 
-  -- if mbD is Nothing -> mbPair, mbD
-  -- else if pbPair is Nothing -> (d,1), Nothing
-  -- else if d==pair.d -> (d,pair.f+1), Nothing
-  -- else -> mbPair, mbD
+  -- if mbS is Nothing -> mbPair, mbS
+  -- else if pbPair is Nothing -> (s,1), Nothing
+  -- else if s==pair.s -> (s,pair.f+1), Nothing
+  -- else -> mbPair, mbS
   
 randomList _ 0 rgen = ([],rgen)
 randomList ulim n rgen = (aux n rgen1, rgen2) where
@@ -114,11 +131,11 @@ randomList ulim n rgen = (aux n rgen1, rgen2) where
 -- Warning: sorted versions of uniformly randomly selected lists have
 --   different distributions compared to a uniformly randomly selected
 --   sorted list. Then again, since our runtimes do not depend on private
---   inputs, who cares!
+--   inputs, So who cares!
 randomSortedList ulim n rgen = (sort l,rgen') where
   (l,rgen') = randomList ulim n rgen
 
-mkcktSpeedDiff calc w a b = do
+mkcktSumFreqs calc w a b = do
   av <- mapM (testInt ServerSide w) a
   bv <- mapM (testInt ClientSide w) b
   dfpairs <- liftNet $ calc av bv
@@ -128,6 +145,8 @@ main = forM [16,32,64,128,256,512] $ \sz -> do
          a <- getStdRandom $ randomSortedList (2^16) sz
          b <- getStdRandom $ randomSortedList (2^16) sz
          burnBenchmark ("speedGood"++show sz)
-           $ mkcktSpeedDiff speedDifferences 16 a b
+           $ mkcktSumFreqs sumFreqs 16 a b
          burnBenchmark ("speedBad"++show sz)
-           $ mkcktSpeedDiff speedDifferencesBad 16 a b
+           $ mkcktSumFreqs sumFreqsNaive 16 a b
+         burnBenchmark ("speedStable"++show sz)
+           $ mkcktSumFreqs sumFreqsStable 16 a b

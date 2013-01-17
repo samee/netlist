@@ -37,7 +37,7 @@ indexSize x = 1 + indexSize ((x+1) `div` 2)
 valueSize 0 = 1
 valueSize x = indexSize (x+1)
 
--- Note: 0 return True
+-- Note: 0 returns True
 isPowerOf2 x = x .&. (x-1) == 0
 
 powerOf2Le x | isPowerOf2 x = x
@@ -45,6 +45,9 @@ powerOf2Le x | isPowerOf2 x = x
 
 powerOf2Lt x | isPowerOf2 x = x `div` 2
              | otherwise = powerOf2Le x
+
+powerOf2Ge x | isPowerOf2 x = x
+             | otherwise = powerOf2Ge $ x + (x .&. (-x))
 
 -- Divides l into n parts as evenly as it can
 divideList n l  | n == 0    = []
