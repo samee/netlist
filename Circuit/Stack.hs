@@ -8,6 +8,7 @@ module Circuit.Stack
 , Circuit.Stack.null
 , condPop
 , condPush
+, condModTop
 ) where
 
 import Control.Monad
@@ -61,6 +62,17 @@ fromList l = (fromList $ take hs l) {
 
 -- I know top will never be in the last slot (ensured by pushAdjust)
 top stk = muxListOffset (headPtr stk) 1 (init $ buffer stk)
+
+-- Assumes stack is not empty
+-- Assumes 1 <= headPtr <= 4
+-- Ensured by invariants, just like in condPush
+condModTop c x stk = do p <- select2Bits $ headPtr stk
+                        write <- decoderREn c 1 5 p
+                        initbuff' <- forM (zip write $ init buff) $ \(w,mb) ->
+                                      mux w mb (netJust x)
+                        return $ stk { buffer = initbuff' ++ [last buff] }
+  where
+  buff = buffer stk
 
 null stk = do a <- netIsNothing (buffer stk !! 1)
               b <- equal (constInt 2) (headPtr stk)

@@ -141,7 +141,7 @@ mkcktSumFreqs calc w a b = do
   dfpairs <- liftNet $ calc av bv
   liftNet $ forM dfpairs outputBlinded
 
-main = forM [16,32,64,128,256,512] $ \sz -> do
+main = forM [16,32,64,128,256,512,1024] $ \sz -> do
          a <- getStdRandom $ randomSortedList (2^16) sz
          b <- getStdRandom $ randomSortedList (2^16) sz
          burnBenchmark ("speedGood"++show sz)
