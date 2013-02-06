@@ -72,26 +72,6 @@ randomWriteCmds n cmdn rgen = flip runState rgen $ do
   vals <- replicateM cmdn $ state $ randomR (0,(2^intW)-1)
   return $ zip inds vals
 
-sizeOptions = [50,100..1000]
-{-
-batchOps badop goodop opname makelist makecmd = do
-  putStrLn $ "------------- Batch "++opname++" Circuits ---------------"
-  putStrLn "n  Naive  Batch"
-  forM_ sizeOptions $ \n -> do
-    let cmdn = n
-    init <- getStdRandom $ makelist n
-    cmd  <- getStdRandom $ makecmd n cmdn
-    let badstat = countGates $ gcilList $ badop init cmd
-        goodstat = countGates $ gcilList $ goodop init cmd
-    putStrLn $ show n ++ "  "++show badstat++"  "++show goodstat
-
-initMaker = randomList (2^intW)
-
-countData = do 
-  batchOps badReadTest  readTest  "Read"  initMaker randomList
-  batchOps badWriteTest writeTest "Write" initMaker randomWriteCmds
-  batchOps badAddTest   addTest   "Add"   initMaker randomWriteCmds
-  -}
 
 
 shortTests = do burnTestCase "smallwrite" $ writeTest smallList writeCmd

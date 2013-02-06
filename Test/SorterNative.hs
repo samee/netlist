@@ -23,7 +23,7 @@ sorted [x] = True
 sorted (x:y:l) = (x<=y) && sorted (y:l)
 
 shortList = [4,2,6,34,5,8,2,4,6]
-longList rgen = (take 20 full,rgen2) where
+longList rgen = (take 2000 full,rgen2) where
   (rgen1,rgen2) = split rgen
   full = randomRs (0,100) rgen1 :: [Int]
 

@@ -1,6 +1,7 @@
 module Circuit.Sorter (sort,merge,CmpSwap,batcherSort,shellSort) where
 import Control.Monad
 import Data.Bits
+import Data.Tuple (swap)
 import Debug.Trace
 
 import Util hiding (inversePermute)
@@ -14,8 +15,7 @@ import System.Random as R
 type CmpSwap m a = a -> a -> m (a,a)
 
 sort :: Monad m => CmpSwap m a -> [a] -> m [a]
-sort cmp l = if length l >= 500 then shellSort (mkStdGen 3949384) cmp l
-                                else batcherSort cmp l
+sort cmp l = batcherSort cmp l
 
 merge :: Monad m => CmpSwap m a -> [a] -> [a] -> m [a]
 merge = batcherMerge
@@ -30,31 +30,23 @@ batcherSort cmpSwap l = do
   h2 <- batcherSort cmpSwap h2
   batcherMerge cmpSwap h1 h2
 
-batcherMerge cmpSwap a b = aux $ a++b where
-  aux [] = return []
-  aux [x] = return [x]
-  aux l = do
-    le' <- aux le
-    lo' <- aux lo
-    batcherSwap cmpSwap $ unsplitOddEven le' lo'
+batcherMerge cmpSwap a b = aux a b where
+  aux a b | length a + length b <= 1 = return $ a++b
+          | otherwise = do
+    le' <- aux ae be
+    lo' <- aux ao bo
+    batcherSwap eva cmpSwap $ unsplitOddEven le' lo'
     where
-    (le,lo) = splitOddEven l
+    eva = even $ length a
+    (ae,ao) = splitOddEven a
+    (be,bo) = (if eva then id else swap) $ splitOddEven b
 
-    {-
-batcherMerge _ [] b = return b
-batcherMerge cmpSwap [a] [b] = do (a,b) <- cmpSwap a b; return [a,b]
-batcherMerge cmpSwap a b = do
-  let (ae,ao) = splitOddEven a; (be,bo) = splitOddEven b
-  ce <- batcherMerge cmpSwap ae be
-  co <- batcherMerge cmpSwap ao bo
-  batcherSwap cmpSwap (unsplitOddEven ce co)
-  -}
-
-batcherSwap _ []  = return []
-batcherSwap _ [x] = return [x]
-batcherSwap cmpSwap (x:y:l) = do
+batcherSwap _ _ []  = return []
+batcherSwap _ _ [x] = return [x]
+batcherSwap skipFirst cmpSwap (x:y:l) =
+  if skipFirst then (x:) `liftM` batcherSwap False cmpSwap (y:l) else do
   (x,y) <- cmpSwap x y
-  liftM (x:) $ batcherSwap cmpSwap (y:l)
+  ([x,y]++) `liftM` batcherSwap False cmpSwap l
 
 unsplitOddEven [] y = y
 unsplitOddEven x [] = x
