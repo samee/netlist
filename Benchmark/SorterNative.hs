@@ -18,7 +18,7 @@ modify f = IntState $ \x -> ((),f x)
 
 -- Simply counts the number of compare-swaps done in a sorting network
 countCompare sorter n = snd $ runIntState (sorter inc dummy) 0 where
-  inc () () = modify (+1) >> return ((),())
+  inc a b = modify (+1) >> return (a `seq` b `seq` (a,b))
   dummy = replicate n ()
 
 sampleN = [a*b | b<-[10,100,1000,10000], a<-[1..9]]

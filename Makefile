@@ -133,5 +133,5 @@ $(LONG_NATIVELOGS): tmp/%-long.log: tmp bin/$(REGRDIR)/%.$(OSUFF)
 
 $(NATIVE_BENCHES): tmp/%-bench.log: tmp Benchmark/%.hs bin/Benchmark/%.$(OSUFF)
 	@date > $@
-	./$* >> $@
+	./$* $(RTSOPTSF) >> $@
 	rm $*
