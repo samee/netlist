@@ -1,9 +1,19 @@
-module Circuit.Array where
+module Circuit.Array 
+  ( NetArray(..)
+  , repeatArray, listArray
+  , elems, arraySize, get, put
+  , writeListArray
+  , Circuit.Array.writeArray, Circuit.Array.readArray, addToArray
+  , badReadArray, badWriteArray, badAddToArray
+  ) where
+-- TODO remove this 'NetArray' data type (and aux functions) if nobody uses it.
 
 import Control.Monad
 import qualified Data.Array as A
+import Data.List
 
-import Circuit.Internal.Array as CA
+import qualified Circuit.Sorter as CS
+import Circuit.Internal.Array as CA -- TODO comment this out
 import Circuit.NetList as NL
 import Util
 
@@ -27,6 +37,35 @@ put i v arr = arr { elt = elt arr A.// [(i,v)] }
 
 writeArray :: Swappable a 
            => NetArray a -> [(NetUInt,a)] -> NetWriter (NetArray a)
+writeArray arr cmd = listArray `liftM` writeListArray (elems arr) cmd
+
+linearPass _ []  = return []
+linearPass _ [x] = return [x]
+linearPass f (x1:x2:xs) = do (x1,x2) <- f x1 x2
+                             (x1:) `liftM` linearPass f (x2:xs)
+
+writeListArray :: Swappable a => [a] -> [(NetUInt,a)] -> NetWriter [a]
+writeListArray l cmd = do
+  let p1 = zipWith (\i v -> (constInt i,constInt 0,v)) [0..] l
+      p2 = zipWith (\p (i,v) -> (i,constInt p,v)) [0..] cmd
+  l1 <- CS.merge cswapiv p1 =<< CS.sort cswapiv p2
+  l2 <- linearPass markLast $ map (addFlag . dropPad) l1
+  (map dropLuggage . drop (length cmd)) `liftM` CS.sort cswapiv l2
+  where
+  addFlag (i,v) = (netTrue,i,v)
+  dropLuggage (_,_,v) = v
+  dropPad (i,_,v) = (i,v)
+  markLast (_,i1,v1) (_,i2,v2) = do
+    neq  <- netNot =<< equal i1 i2
+    return ((neq,i1,v1),(netTrue,i2,v2))
+
+ignoreThird (a,b,_) = (a,b)
+cswapiv :: (Swappable a, Swappable c, NetOrd a) 
+        => (a,NetUInt,c) -> (a,NetUInt,c) 
+        -> NetWriter ((a,NetUInt,c),(a,NetUInt,c))
+cswapiv = cmpSwapBy ignoreThird
+  
+           {-
 writeArray arr cmd = liftM listArray $ CA.writeArray writeSpecs (elems arr) cmd
   where
   addrw = indexSize $ arraySize arr
@@ -41,6 +80,7 @@ writeArray arr cmd = liftM listArray $ CA.writeArray writeSpecs (elems arr) cmd
     , wsIfEq = \a b t f -> do eq <- equal a b; mux eq f t
     , wsSift = nothingGreater
     }
+    -}
 
 -- First compares by nothing, which is placed later. Then compares first
 nothingGreater mbA mbB | knownNothing mbB = return (mbA,mbB)

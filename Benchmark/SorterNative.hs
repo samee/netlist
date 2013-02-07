@@ -21,7 +21,7 @@ countCompare sorter n = snd $ runIntState (sorter inc dummy) 0 where
   inc () () = modify (+1) >> return ((),())
   dummy = replicate n ()
 
-sampleN = [a*b | b<-[10,100,1000,10000], a<-[1..9]]
+sampleN = [a*b | b<-[10,100,1000,10000,100000], a<-[1..9]]
 
 pad w s | len >= w = s
         | otherwise = s++replicate (w-len) ' '
@@ -34,6 +34,6 @@ main = do
   rshell <- getStdRandom genRShellSort
   putStrLn "n batcher rshell"
   forM sampleN $ \n -> do
-    putStrLn $ pad 6 (show n) ++ show (countCompare batcherSort n)
+    putStrLn $ pad 7 (show n) ++ show (countCompare batcherSort n)
                       ++"\t"  ++ show (countCompare rshell n)
 
