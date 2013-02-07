@@ -26,7 +26,7 @@ module Circuit.NetList
 , NetOrd (chainGreaterThan, greaterThan)
 , lessThan
 , netMin, netMax
-, cmpSwap
+, cmpSwap, cmpSwapBy, cmpSwapByM
 , NetUInt
 , NetSInt
 , NetBits(..), BitSym(..)
@@ -227,6 +227,44 @@ class NetOrd a where
 lessThan :: NetOrd a => a -> a -> NetWriter NetBool
 lessThan = flip greaterThan
 
+instance (NetOrd p,NetOrd q) => NetOrd (p,q) where
+  chainGreaterThan c (p1,q1) (p2,q2) = do
+    c <- chainGreaterThan c q1 q2
+    chainGreaterThan c p1 p2
+
+  greaterThan (p1,q1) (p2,q2) = do
+    c <- greaterThan q1 q2
+    chainGreaterThan c p1 p2
+
+instance (NetOrd p,NetOrd q,NetOrd r) => NetOrd (p,q,r) where
+  chainGreaterThan c (p1,q1,r1) (p2,q2,r2) = do
+    c <- chainGreaterThan c r1 r2
+    c <- chainGreaterThan c q1 q2
+    chainGreaterThan c p1 p2
+
+  greaterThan (p1,q1,r1) (p2,q2,r2) = do
+    c <- greaterThan r1 r2
+    c <- chainGreaterThan c q1 q2
+    chainGreaterThan c p1 p2
+
+-- Compares non-empties to be greater than empties
+-- All empties are equal, non-empties are compared by value parts.
+instance NetOrd a => NetOrd (NetMaybe a) where
+  chainGreaterThan c (NetMaybe _ Nothing) (NetMaybe _ Nothing) = return c
+  chainGreaterThan c (NetMaybe p1 (Just _)) (NetMaybe _ Nothing) = netOr c p1
+  chainGreaterThan c (NetMaybe _ Nothing) (NetMaybe p2 (Just _)) = 
+    netAnd c =<< netNot p2
+  chainGreaterThan c (NetMaybe p1 (Just v1)) (NetMaybe p2 (Just v2)) = do
+    bz <- netOr p1 p2
+    mux bz c =<< chainGreaterThan c (p1,v1) (p2,v2)
+
+  greaterThan (NetMaybe _ Nothing) _ = return netFalse
+  greaterThan (NetMaybe p1 (Just _)) (NetMaybe _ Nothing) = return p1
+  greaterThan (NetMaybe p1 (Just v1)) (NetMaybe p2 (Just v2)) = do
+    bz <- netOr p1 p2
+    netAnd bz =<< greaterThan (p1,v1) (p2,v2)
+
+
 netMax a b = do c <- greaterThan a b
                 mux c b a
 
@@ -235,6 +273,16 @@ netMin a b = do c <- greaterThan a b
 
 cmpSwap a b = do c <- greaterThan a b
                  condSwap c a b
+
+cmpSwapBy f a b = do
+  c <- greaterThan (f a) (f b)
+  condSwap c a b
+
+cmpSwapByM f a b = do
+  fa <- f a
+  fb <- f b
+  c <- greaterThan fa fb
+  condSwap c a b
 
 newtype NetUInt = NetUInt { uIntBits :: NetBits }
 newtype NetSInt = NetSInt { sIntBits :: NetBits }

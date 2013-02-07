@@ -1,9 +1,19 @@
-module Circuit.Array where
+module Circuit.Array 
+  ( NetArray(..)
+  , repeatArray, listArray
+  , elems, arraySize, get, put
+  , writeListArray, addToListArray
+  , Circuit.Array.writeArray, Circuit.Array.readArray, addToArray
+  , badReadArray, badWriteArray, badAddToArray
+  ) where
+-- TODO remove this 'NetArray' data type (and aux functions) if nobody uses it.
 
 import Control.Monad
 import qualified Data.Array as A
+import Data.List
 
-import Circuit.Internal.Array as CA
+import qualified Circuit.Sorter as CS
+import Circuit.Internal.Array as CA -- TODO comment this out
 import Circuit.NetList as NL
 import Util
 
@@ -25,39 +35,76 @@ arraySize arr = (+1) $ snd $ A.bounds $ elt $ arr
 get i arr = elt arr A.! i
 put i v arr = arr { elt = elt arr A.// [(i,v)] }  
 
-writeArray :: Swappable a 
-           => NetArray a -> [(NetUInt,a)] -> NetWriter (NetArray a)
-writeArray arr cmd = liftM listArray $ CA.writeArray writeSpecs (elems arr) cmd
+writeArray arr cmd = listArray `liftM` writeListArray (elems arr) cmd
+addToArray arr cmd = listArray `liftM` addToListArray (elems arr) cmd
+readArray arr inds =                   readListArray  (elems arr) inds
+
+-- Util functions for writeListArray and addToListArray
+linearPass _ []  = return []
+linearPass _ [x] = return [x]
+linearPass f (x1:x2:xs) = do (x1,x2) <- f x1 x2
+                             (x1:) `liftM` linearPass f (x2:xs)
+ignoreThird (a,b,_) = (a,b)
+cswapiv :: (Swappable a, Swappable c, NetOrd a) 
+        => (a,NetUInt,c) -> (a,NetUInt,c) 
+        -> NetWriter ((a,NetUInt,c),(a,NetUInt,c))
+cswapiv = cmpSwapBy ignoreThird
+addFlag (i,v) = (netTrue,i,v)
+dropLuggage (_,_,v) = v
+
+-- Assumes all indices are valid
+writeListArray :: Swappable a => [a] -> [(NetUInt,a)] -> NetWriter [a]
+writeListArray l cmd = do
+  let p1 = zipWith (\i v -> (constInt i,constInt 0,v)) [0..] l
+      p2 = zipWith (\p (i,v) -> (i,constInt p,v)) [0..] cmd
+  l1 <- CS.merge cswapiv p1 =<< CS.sort cswapiv p2
+  l2 <- linearPass markLast $ map (addFlag . dropPad) l1
+  (map dropLuggage . drop (length cmd)) `liftM` CS.sort cswapiv l2
   where
-  addrw = indexSize $ arraySize arr
-  serw  = indexSize $ length cmd
-  writeSpecs = CA.WriteSpecs 
-    { wsConstAddr = return . constInt
-    , wsConstSerial = return . (constInt :: Int -> NetUInt)
-    , wsArrayIndex = cmpSwapAddrSerial
-    , wsNoPair    = netNoth
-    , wsFromMaybe = return . netFromJust
-    , wsToMaybe   = return . netJust
-    , wsIfEq = \a b t f -> do eq <- equal a b; mux eq f t
-    , wsSift = nothingGreater
-    }
+  dropPad (i,_,v) = (i,v)
+  markLast (_,i1,v1) (_,i2,v2) = do
+    neq  <- netNot =<< equal i1 i2
+    return ((neq,i1,v1),(netTrue,i2,v2))
+  
+-- Assumes all indices are valid
+addToListArray :: NetInt i => [i] -> [(NetUInt,i)] -> NetWriter [i]
+addToListArray l cmd = do
+  let p1 = zipWith (\i v -> (constInt i,v)) [0..] l
+  l1 <- CS.merge (cmpSwapBy fst) p1 =<< CS.sort (cmpSwapBy fst) cmd
+  l2 <- linearPass addOver $ map addFlag l1
+  (map dropLuggage . drop (length cmd)) `liftM` CS.sort cswapiv l2
+  where
+  addFlag (i,v) = (netTrue,i,v)
+  addOver (_,i1,v1) (_,i2,v2) = do
+    eq  <- equal i1 i2
+    neq <- netNot eq
+    v2' <- condAdd eq v2 v1
+    return ((neq,i1,v1),(netTrue,i2,v2'))
 
--- First compares by nothing, which is placed later. Then compares first
-nothingGreater mbA mbB | knownNothing mbB = return (mbA,mbB)
-                       | knownNothing mbA = return (mbB,mbA)
-                       | otherwise = do
-                          anp <- netIsNothing mbA
-                          bnp <- netIsNothing mbB
-                          let (a,_) = netFromJust mbA; (b,_) = netFromJust mbB
-                          c <- greaterThan a b
-                          c <- chainGreaterThan c anp bnp
-                          condSwap c mbA mbB
+-- Change to NetInt a and re-use wires if this is too inefficient
+-- Could have removed a few more gates using NetMaybe. Meh.
+-- Assumes all indices are valid
+readListArray :: Swappable a => [a] -> [NetUInt] -> NetWriter [a]
+readListArray l inds = do
+  let p1 = zipWith (\i v -> (constInt i,constInt 0,v)) [0..] l
+      p2 = zipWith (\pad i -> (i,constInt pad,head l)) [1..] inds
+  l1 <- CS.merge cswapIndNz p1 =<< CS.sort cswapInd p2
+  l2 <- linearPass copyOver $ map dropInd l1
+  (map snd . drop (length l)) `liftM` CS.sort (cmpSwapBy fst) l2
+  where
+  cswapIndNz a@(i1,p1,_) b@(i2,p2,_) = do
+    nz1 <- netNot =<< equal p1 (constInt 0)
+    nz2 <- netNot =<< equal p2 (constInt 0)
+    c <- greaterThan (i1,nz1) (i2,nz2)
+    condSwap c a b
+  cswapInd = cmpSwapBy (\(i,_,_) -> i)
+  dropInd (_,pad,v) = (pad,v)
+  copyOver (p1,v1) (p2,v2) = do
+    z2 <- equal (p2::NetUInt) (constInt 0)
+    v2' <- mux z2 v1 v2
+    return ((p1,v1),(p2,v2'))
 
-cmpSwapAddrSerial a@(aAddr,aSerial,_) b@(bAddr,bSerial,_) = do
-  c <- greaterThan aSerial bSerial
-  c <- chainGreaterThan c aAddr bAddr
-  condSwap c a b
-
+{-
 data ReadMix a mix = ReadMix { rmMixFromValue  :: a->NetWriter mix
                              , rmMixFromSerial :: NetUInt->NetWriter mix
                              , rmMixToValue  :: mix->NetWriter a
@@ -101,6 +148,7 @@ readArrayBase rmix arr addrs = CA.readArray readSpecs (elems arr) addrs
     eltRes <- rmMixToValue  rmix bitz >>= eltRes
     serRes <- rmMixToSerial rmix bitz >>= serialRes
     mux tp eltRes serRes
+-}
 
 -- First make sure all the Nothing ends up towards left
 -- and then among the Just, compare by serial
@@ -121,28 +169,6 @@ valueBeforeRead a@(addrA,(at,_)) b@(addrB,(bt,_)) = do
   c <- greaterThan at bt
   c <- chainGreaterThan c addrA addrB
   condSwap c a b
-
-
-addToArray :: NetInt i => NetArray i -> [(NetUInt,i)] -> NetWriter (NetArray i)
-addToArray arr cmds = do (elts',_,Just(_,last)) <- CA.applyOps opSpecs elts cmds
-                         return $ listArray $ init elts' ++ [last]
-  where
-  elts = elems arr
-  opSpecs = OpSpecs { castEltToMix = (\i x -> return (constInt i,x))
-                    , castOpToMix  = (\_ x -> return x)
-                    , cswpArrayIndex = byAddr
-                    , foldInit = Nothing
-                    , foldBody = accum
-                    , cswpSift = nothingGreater
-                    , castMixToElt = return.snd.netFromJust
-                    , castMixToResult = return
-                    }
-  accum Nothing x = return (Just x,netNoth)
-  accum (Just (adA,valA)) (adB,valB) = do
-    eq <- equal adA adB
-    nxtSum <- condAdd eq valB valA
-    curOut <- mux eq (netJust(adA,valA)) netNoth
-    return (Just(adB,nxtSum),curOut)
 
 byAddr a@(adA,_) b@(adB,_) = do c <- greaterThan adA adB
                                 condSwap c a b

@@ -40,7 +40,7 @@ NATIVE_BENCHES := $(filter %Native-bench.log,$(BENCHLOGS))
 
 .PHONY: all testbins test clean
 
-# TODO test longtests and gcil failures
+# TODO test longtests failures
 
 # REMOVE $* is stem
 # TODO remove dimacsOut gcilouts folders, build and SorterTests.hs

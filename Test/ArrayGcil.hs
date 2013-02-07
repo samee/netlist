@@ -20,8 +20,9 @@ writeManual a l = elems (arr // l) where
 writeTest = modifyTest CA.writeArray writeManual
 badWriteTest = modifyTest CA.badWriteArray writeManual
 
-addManual a l = elems $ accum (+) arr l where
+addManual a l = map trunc $ elems $ accum (+) arr l where
   arr = listArray (0,length a-1) a
+  trunc x = x `mod` (2^intW)
 addTest = modifyTest CA.addToArray addManual
 badAddTest = modifyTest CA.badAddToArray addManual
 
@@ -84,7 +85,6 @@ longTests = do largeList     <- getStdRandom $ randomList (2^intW) n
                readAddrsLots <- getStdRandom $ randomList n cmdn
                burnTestCase "largewrite" $ writeTest largeList writeCmdLots
                burnTestCase "largeread"  $ readTest  largeList readAddrsLots
-               -- FIXME
-               burnTestCase "largeadd"   $ addTest largeList writeCmdLots
+               burnTestCase "largeadd"   $ addTest   largeList writeCmdLots
   where n    = 500
         cmdn = 500
