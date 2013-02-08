@@ -34,6 +34,6 @@ main = do
   rshell <- getStdRandom genRShellSort
   putStrLn "n batcher rshell"
   forM sampleN $ \n -> do
-    putStrLn $ pad 7 (show n) ++ show (countCompare batcherSort n)
-                      ++"\t"  ++ show (countCompare rshell n)
+  putStrLn $ pad 7 (show n) ++ show (countCompare batcherSort n)
+                    ++"\t"  ++ show (countCompare rshell n)
 

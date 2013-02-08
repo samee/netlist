@@ -33,6 +33,7 @@ shellSortTestShort = shellSortTest shortList
 shortTests = do
   ll <- getStdRandom longList
   let tests = [(batcherSortTestShort, "batcherSortTestShort")
+              ,(batcherSortTest   ll, "batcherSortTest"     )
               ,(  shellSortTestShort,   "shellSortTestShort")
               ,(    shellSortTest ll,   "shellSortTest"     )
               ]
