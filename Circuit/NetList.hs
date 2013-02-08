@@ -125,6 +125,7 @@ data Opcode   = BinOp NetBinOp NetBits NetBits
               | ConcatOp [NetBits]
               | SelectOp Int Int NetBits -- select or trunc
               | ExtendOp ExtendType Int NetBits
+              | MuxOp NetBits NetBits NetBits
 
 -- I do miss a chained greater than command BitGtChain Bool
 data NetBinOp = BitAdd | BitSub | BitOr | BitAnd | BitXor | BitEq | BitGt
@@ -174,6 +175,7 @@ addDeallocs out = reverse.aux (S.fromList (map varid out))
   opUsed (ConcatOp vs)    = vs
   opUsed (SelectOp _ _ v) = [v]
   opUsed (ExtendOp _ _ v) = [v]
+  opUsed (MuxOp c u v)    = [c,u,v]
 
 varid (NetBits { bitValues = VarId id }) = id
 isSymbolic (NetBits { bitValues = VarId _ }) = True
@@ -393,6 +395,7 @@ emit opcode = do v <- newBits $ resultWidth opcode
 resultWidth (ExtendOp _ w v) = max w $ bitWidth v
 resultWidth (SelectOp a b _) = b - a
 resultWidth (ConcatOp l) = sum $ map bitWidth l
+resultWidth (MuxOp _ u _) = bitWidth u
 resultWidth op | singleBitOutput op = 1 
                | otherwise = argWidth op
 
@@ -419,9 +422,16 @@ constBinOp op av bv = case op of BitAnd -> a .&. b
 castFromConst (NetBits { bitValues = ConstMask x }) = x
 
 muxBits :: NetBool -> NetBits -> NetBits -> NetWriter NetBits
+{-
+-- This version was used before OpCode had a 'MuxOp'
 muxBits c a b = do x <- bitwiseXor a b
                    cx <- bitRepeat (bitWidth a) c
                    bitwiseXor a =<< bitwiseAnd cx x
+                   -}
+muxBits c a b | bitWidth a /= bitWidth b = undefined
+              | knownTrue  c = return b
+              | knownFalse c = return a
+              | otherwise = do c' <- bitify c; emit $ MuxOp c' a b
 
 -- Avoids using bitwiseXor, since that results in constant propagation
 -- Returns the ID of the variable output

@@ -171,6 +171,7 @@ opcodeAndCost (UnOp BitNot _) = 0
 opcodeAndCost (ConcatOp _) = 0
 opcodeAndCost (SelectOp _ _ _) = 0
 opcodeAndCost (ExtendOp _ _ _) = 0
+opcodeAndCost (MuxOp _ x _) = bitWidth x
 
 totalCost (OutputBits _) = 0
 totalCost (AssignResult _ op) = opcodeTotalCost op
@@ -190,6 +191,7 @@ opcodeTotalCost (UnOp BitNot _)       = 0
 opcodeTotalCost (ConcatOp _)     = 0
 opcodeTotalCost (SelectOp _ _ _) = 0
 opcodeTotalCost (ExtendOp _ _ _) = 0
+opcodeTotalCost (MuxOp _ x _)    = 3*bitWidth x
 
 idName v = 't':show v
 inName = idName.varId
@@ -216,6 +218,7 @@ stringOfOpcode (SelectOp st en v)
   | otherwise = unwords ["select",vstr v,show st,show en]
 stringOfOpcode (ExtendOp ext w v) = unwords [exts,vstr v,show w]
   where exts = case ext of ZeroExtend -> "zextend"; SignExtend -> "sextend"
+stringOfOpcode (MuxOp c u v) = unwords ["chose",vstr c,vstr u,vstr v]
 
 opline op l = unwords $ op:map vstr l
 bopStr x = case x of  BitAnd -> "and"
