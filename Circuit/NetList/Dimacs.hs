@@ -280,6 +280,10 @@ ripple2 ripple2Unit x y = mapAccumM (uc ripple2Unit) dmZeroVar =<< pairList
   uc f c (x,y) = f c x y
   pairList = liftM2 zip (bitList x) (bitList y)
 
+dmMux c x y = dmWideXor x =<< dmWideAnd cw =<< dmWideXor x y
+  where cw = replicate (length x) $ head c
+                 
+
 isClause (Clause _) = True
 isClause _ = False
 
@@ -313,6 +317,8 @@ compileOp (ExtendOp SignExtend w x) = do
 compileOp (ExtendOp ZeroExtend w x) = do
   l <- bitList x
   return $ l ++ replicate (w-length l) dmZeroVar
+compileOp (MuxOp c x y)         = join $ dmMux <$> bitList c <*> bitList x 
+                                                             <*> bitList y
 compileOp (UnOp BitNot x)       = liftM (map negate) $ bitList x
 compileOp (UnOp BitNeg x)       = liftM snd $ ripple dmNegUnit x
 compileOp (UnOp BitAny x)       = liftM (:[]) $ dmOrList =<< bitList x
